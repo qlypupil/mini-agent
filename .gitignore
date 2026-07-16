@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build and test output
+dist/
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# System and editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Local AI tooling
+.codex/
+.agents/
