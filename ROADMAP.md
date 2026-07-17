@@ -15,6 +15,7 @@
 - 修正 LangChain 工具定义的 `schema` 字段兼容性。
 - 补充 Agent CLI 的交互流程与 readline 使用注释。
 - 配置构建后的 Agent CLI 启动脚本。
+- 支持通过环境变量配置 Moonshot API Base URL。
 
 ## 进行中
 
@@ -32,3 +33,4 @@
 
 - `pnpm typecheck`、`pnpm build` 与 `pnpm start` 通过。
 - 构建产物已完成 Moonshot 集成测试：`hi` 与 `who are you` 均收到正常流式回复。
+- `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过。

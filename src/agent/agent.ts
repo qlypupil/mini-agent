@@ -31,6 +31,8 @@ const search = tool(
 
 // Moonshot 兼容 OpenAI Chat Completions API，因此复用 ChatOpenAI 客户端。
 const MOONSHOT_API_KEY = process.env.MOONSHOT_API_KEY
+const MOONSHOT_BASE_URL =
+	process.env.MOONSHOT_BASE_URL ?? 'https://api.moonshot.cn/v1'
 
 if (!MOONSHOT_API_KEY) {
 	throw new Error('MOONSHOT_API_KEY is not set')
@@ -40,7 +42,7 @@ const model = new ChatOpenAI({
 	model: 'moonshot-v1-8k',
 	apiKey: MOONSHOT_API_KEY,
 	configuration: {
-		baseURL: 'https://api.moonshot.cn/v1',
+		baseURL: MOONSHOT_BASE_URL,
 	},
 	streaming: true,
 })

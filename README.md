@@ -23,6 +23,8 @@ cp .env.example .env
 
 应用入口会通过 `dotenv` 自动加载 `.env`。`.env` 已被 Git 忽略，禁止提交密钥或 token。
 
+`MOONSHOT_API_KEY` 是必填项；`MOONSHOT_BASE_URL` 可选，未设置时使用 Moonshot 默认地址。
+
 ## 常用命令
 
 ```bash
