@@ -20,6 +20,7 @@
 - 接入 Commander.js，并注册 `miniagent` 全局 CLI 命令。
 - 将 Commander 命令定义抽离至 `src/agent/command.ts`。
 - 抽取 CLI readline 接口创建函数。
+- 支持在 Agent 流式回复期间通过 ESC 取消请求。
 
 ## 进行中
 
@@ -40,3 +41,4 @@
 - `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过。
 - MemorySaver 集成测试通过：同一线程内保存并正确取回用户名 `Pupil`。
 - `miniagent --help`、`miniagent --version` 与交互启动验证通过。
+- ESC 集成测试通过：流式响应在 3 秒后被取消，CLI 恢复到下一轮输入。

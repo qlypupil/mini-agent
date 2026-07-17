@@ -68,12 +68,14 @@ const agent = createAgent({
  * @param {string} userMessage - 当前用户输入
  * @param {Function} onToken   - 每个 token 到来时的回调 (token: string) => void
  * @param {string} threadId    - 会话 ID，相同 ID 会续接当前进程内的历史记录
+ * @param {AbortSignal} signal - 用于取消当前 Agent 请求的信号
  * @returns {Promise<string>}  完整的 AI 回复文本
  */
 export async function runAgentStream(
 	userMessage: string,
 	onToken: (token: string) => void,
 	threadId: string = 'default-session',
+	signal?: AbortSignal,
 ): Promise<string> {
 	const config = {
 		configurable: {
@@ -83,7 +85,7 @@ export async function runAgentStream(
 
 	const stream = await agent.stream(
 		{ messages: [{ role: 'user', content: userMessage }] },
-		{ ...config, streamMode: 'messages' },
+		{ ...config, streamMode: 'messages', signal },
 	)
 
 	let fullResponse = ''

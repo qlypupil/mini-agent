@@ -18,6 +18,28 @@ function createInterface(): readline.Interface {
 
 const rl = createInterface()
 
+function listenForEscape(controller: AbortController): () => void {
+	if (!process.stdin.isTTY) {
+		return () => {}
+	}
+
+	readline.emitKeypressEvents(process.stdin)
+	process.stdin.setRawMode(true)
+
+	const onKeypress = (_character: string, key: { name?: string }) => {
+		if (key.name === 'escape') {
+			controller.abort()
+		}
+	}
+
+	process.stdin.on('keypress', onKeypress)
+
+	return () => {
+		process.stdin.off('keypress', onKeypress)
+		process.stdin.setRawMode(false)
+	}
+}
+
 // 将 readline 基于回调的 question API 包装为 Promise，方便在 while 循环中使用 await。
 function prompt(question: string): Promise<string> {
 	return new Promise((resolve) => {
@@ -28,24 +50,31 @@ function prompt(question: string): Promise<string> {
 }
 
 async function chat(userInput: string): Promise<void> {
-	// 流式输出期间暂停读取用户输入，避免新输入与模型 token 交错在同一终端行。
-	rl.pause()
-
 	// write 不自动换行，使每个流式 token 能连续显示。
 	process.stdout.write('\nAI: ')
 
-	await runAgentStream(
-		userInput,
-		(token: string) => {
-			process.stdout.write(token)
-		},
-		THREAD_ID,
-	)
+	const controller = new AbortController()
+	const stopListening = listenForEscape(controller)
 
-	process.stdout.write('\n\n')
-
-	// 当前回复结束后恢复终端输入，等待下一轮提问。
-	rl.resume()
+	try {
+		await runAgentStream(
+			userInput,
+			(token: string) => {
+				process.stdout.write(token)
+			},
+			THREAD_ID,
+			controller.signal,
+		)
+		process.stdout.write('\n\n')
+	} catch (error) {
+		if (controller.signal.aborted) {
+			process.stdout.write('\n\n已取消当前请求。\n\n')
+			return
+		}
+		throw error
+	} finally {
+		stopListening()
+	}
 }
 
 async function main(): Promise<void> {
