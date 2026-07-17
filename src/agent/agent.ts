@@ -32,6 +32,7 @@ const search = tool(
 
 // Moonshot 兼容 OpenAI Chat Completions API，因此复用 ChatOpenAI 客户端。
 const MOONSHOT_API_KEY = process.env.MOONSHOT_API_KEY
+// 允许部署环境替换兼容网关，同时保持未配置时的原有 Moonshot 地址。
 const MOONSHOT_BASE_URL =
 	process.env.MOONSHOT_BASE_URL ?? 'https://api.moonshot.cn/v1'
 

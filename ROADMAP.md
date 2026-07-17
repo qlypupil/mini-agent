@@ -21,6 +21,8 @@
 - 将 Commander 命令定义抽离至 `src/agent/command.ts`。
 - 抽取 CLI readline 接口创建函数。
 - 支持在 Agent 流式回复期间通过 ESC 取消请求。
+- 新增含 GitHub 提交直达链接的历史说明文档，记录各阶段的关键实现与验证。
+- 补充近期 Agent 与 CLI 关键配置、取消机制和命令工厂注释。
 
 ## 进行中
 

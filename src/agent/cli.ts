@@ -18,6 +18,7 @@ function createInterface(): readline.Interface {
 
 const rl = createInterface()
 
+// raw mode 让 ESC 无需等待回车即可触发 keypress；返回清理函数供 finally 调用。
 function listenForEscape(controller: AbortController): () => void {
 	if (!process.stdin.isTTY) {
 		return () => {}
@@ -53,6 +54,7 @@ async function chat(userInput: string): Promise<void> {
 	// write 不自动换行，使每个流式 token 能连续显示。
 	process.stdout.write('\nAI: ')
 
+	// 每轮请求独享控制器，避免 ESC 取消到下一轮对话。
 	const controller = new AbortController()
 	const stopListening = listenForEscape(controller)
 
