@@ -1,36 +1,42 @@
 {
-  "name": "mini-agent",
-  "version": "1.0.0",
-  "description": "A TypeScript project scaffold with Jest unit tests.",
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
-    "test": "jest",
-    "test:watch": "jest --watch"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/qlypupil/mini-agent.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/qlypupil/mini-agent/issues"
-  },
-  "homepage": "https://github.com/qlypupil/mini-agent#readme",
-  "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "jest": "^30.0.5",
-    "ts-jest": "^29.4.1",
-    "typescript": "^6.0.3"
-  },
-  "packageManager": "pnpm@11.7.0",
-  "dependencies": {
-    "@langchain/core": "^1.2.3",
-    "@langchain/langgraph": "^1.4.8",
-    "langchain": "^1.5.3"
-  }
+	"name": "mini-agent",
+	"version": "1.0.0",
+	"description": "A TypeScript project scaffold with Jest unit tests.",
+	"main": "dist/index.js",
+	"scripts": {
+		"build": "tsc",
+		"dev": "ts-node src/agent/cli.ts",
+		"start": "node dist/agent/cli.js",
+		"typecheck": "tsc --noEmit",
+		"test": "jest",
+		"test:watch": "jest --watch"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/qlypupil/mini-agent.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "commonjs",
+	"bugs": {
+		"url": "https://github.com/qlypupil/mini-agent/issues"
+	},
+	"homepage": "https://github.com/qlypupil/mini-agent#readme",
+	"devDependencies": {
+		"@types/jest": "^30.0.0",
+		"jest": "^30.0.5",
+		"ts-jest": "^29.4.1",
+		"ts-node": "^10.9.2",
+		"typescript": "^6.0.3"
+	},
+	"packageManager": "pnpm@11.7.0",
+	"dependencies": {
+		"@langchain/core": "^1.2.3",
+		"@langchain/langgraph": "^1.4.8",
+		"@langchain/openai": "^1.5.5",
+		"dotenv": "^17.4.2",
+		"langchain": "^1.5.3",
+		"zod": "^4.4.3"
+	}
 }

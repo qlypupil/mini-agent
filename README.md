@@ -13,11 +13,24 @@
 pnpm install
 ```
 
+## 环境变量
+
+复制 `.env.example` 为 `.env`，在其中填写本地环境变量：
+
+```bash
+cp .env.example .env
+```
+
+应用入口会通过 `dotenv` 自动加载 `.env`。`.env` 已被 Git 忽略，禁止提交密钥或 token。
+
 ## 常用命令
 
 ```bash
 # 类型检查
 pnpm typecheck
+
+# 直接运行 TypeScript 入口
+pnpm dev
 
 # 运行单元测试
 pnpm test
@@ -27,7 +40,12 @@ pnpm test:watch
 
 # 编译 TypeScript 到 dist/
 pnpm build
+
+# 执行构建后的 Agent CLI
+pnpm start
 ```
+
+`pnpm start` 执行 `dist/agent/cli.js`，首次运行或修改源码后需先执行 `pnpm build`。
 
 ## 测试约定
 
