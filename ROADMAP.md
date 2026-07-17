@@ -23,6 +23,9 @@
 - 支持在 Agent 流式回复期间通过 ESC 取消请求。
 - 新增含 GitHub 提交直达链接的历史说明文档，记录各阶段的关键实现与验证。
 - 补充近期 Agent 与 CLI 关键配置、取消机制和命令工厂注释。
+- 将 search 工具抽离至 `src/agent/tools`，并补充同目录单元测试。
+- 新增 tools 注册表，集中维护工具的名称、描述和输入 schema。
+- 修复 ESC 取消机制导致的 readline 中文输入重复回显。
 
 ## 进行中
 
@@ -44,3 +47,5 @@
 - MemorySaver 集成测试通过：同一线程内保存并正确取回用户名 `Pupil`。
 - `miniagent --help`、`miniagent --version` 与交互启动验证通过。
 - ESC 集成测试通过：流式响应在 3 秒后被取消，CLI 恢复到下一轮输入。
+- `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（2 个测试套件、3 条测试）。
+- `pnpm dev` 中文天气输入集成测试通过，用户输入仅回显一次。

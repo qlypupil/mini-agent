@@ -1,34 +1,11 @@
 import { createAgent } from 'langchain'
-import { tool } from '@langchain/core/tools'
 import { MemorySaver } from '@langchain/langgraph'
 import { ChatOpenAI } from '@langchain/openai'
-import { z } from 'zod'
 import * as dotenv from 'dotenv'
 import { meta } from 'zod/v4/core'
+import { tools } from './tools'
 
 dotenv.config()
-
-// 示例工具：用于演示 Agent 的工具调用链路，尚未接入真实搜索服务。
-const search = tool(
-	async ({ query }: { query: string }) => {
-		console.log(`\n[Tool] search called: "${query}"`)
-
-		if (
-			query.toLowerCase().includes('sf') ||
-			query.toLowerCase().includes('san francisco')
-		) {
-			return "It's 60 degrees and foggy."
-		}
-		return "It's 90 degrees and sunny."
-	},
-	{
-		name: 'search',
-		description: 'Search the web for information',
-		schema: z.object({
-			query: z.string().describe('The query to use in your search.'),
-		}),
-	},
-)
 
 // Moonshot 兼容 OpenAI Chat Completions API，因此复用 ChatOpenAI 客户端。
 const MOONSHOT_API_KEY = process.env.MOONSHOT_API_KEY
@@ -55,7 +32,7 @@ const checkpointer = new MemorySaver()
 // Agent 负责根据模型输出决定是否调用 tools，并继续生成最终回答。
 const agent = createAgent({
 	model,
-	tools: [search],
+	tools,
 	systemPrompt: 'You are a helpful assistant.',
 	checkpointer,
 })

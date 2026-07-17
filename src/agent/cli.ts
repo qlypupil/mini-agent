@@ -18,18 +18,21 @@ function createInterface(): readline.Interface {
 
 const rl = createInterface()
 
-// raw mode 让 ESC 无需等待回车即可触发 keypress；返回清理函数供 finally 调用。
-function listenForEscape(controller: AbortController): () => void {
+let activeController: AbortController | undefined
+
+// 整个 CLI 生命周期内保持 raw mode，避免在 readline 回调期间切换模式而重复回显输入。
+function setupKeyboardControls(): () => void {
 	if (!process.stdin.isTTY) {
 		return () => {}
 	}
 
 	readline.emitKeypressEvents(process.stdin)
+	const wasRaw = process.stdin.isRaw
 	process.stdin.setRawMode(true)
 
 	const onKeypress = (_character: string, key: { name?: string }) => {
-		if (key.name === 'escape') {
-			controller.abort()
+		if (key.name === 'escape' && activeController) {
+			activeController.abort()
 		}
 	}
 
@@ -37,7 +40,7 @@ function listenForEscape(controller: AbortController): () => void {
 
 	return () => {
 		process.stdin.off('keypress', onKeypress)
-		process.stdin.setRawMode(false)
+		process.stdin.setRawMode(wasRaw)
 	}
 }
 
@@ -56,7 +59,7 @@ async function chat(userInput: string): Promise<void> {
 
 	// 每轮请求独享控制器，避免 ESC 取消到下一轮对话。
 	const controller = new AbortController()
-	const stopListening = listenForEscape(controller)
+	activeController = controller
 
 	try {
 		await runAgentStream(
@@ -75,11 +78,16 @@ async function chat(userInput: string): Promise<void> {
 		}
 		throw error
 	} finally {
-		stopListening()
+		if (activeController === controller) {
+			activeController = undefined
+		}
 	}
 }
 
 async function main(): Promise<void> {
+	const stopKeyboardControls = setupKeyboardControls()
+	rl.once('close', stopKeyboardControls)
+
 	console.log('=== Agent 聊天控制台 (输入 "exit" 退出) ===\n')
 
 	while (true) {
