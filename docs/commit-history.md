@@ -206,6 +206,37 @@ if (controller.signal.aborted) {
 - 真实 Moonshot 长响应测试中，3 秒后发送 ESC，已中断部分流式输出、显示取消提示，并返回 `You:`。
 - 简短的 100 词自我介绍可能在 3 秒内自然完成；此时 ESC 不会取消已结束的请求，这是预期行为。
 
+## 8. [`10611a3` `feat: 统一 Agent 工具与终端输入`](https://github.com/qlypupil/mini-agent/commit/10611a395947cf2ccf5ff078e83c069e49523359)
+
+**目标**：集中管理 Agent 工具元信息，降低工具实现的测试成本，并修复 ESC 功能引入的中文输入重复回显。
+
+**主要改动**：
+
+- 新增 `src/agent/tools/index.ts`，集中定义工具的 `name`、`description`、Zod schema 和注册表。
+- `search.ts` 只保留纯查询实现，`search.test.ts` 直接测试业务分支，不依赖 LangChain wrapper。
+- `agent.ts` 从 `tools` 注册表加载全部工具。
+- raw mode 改为 CLI 生命周期内一次性启用，避免在 `readline.question()` 回调后切换终端模式。
+- ESC 仅在活动请求存在时取消对应的 `AbortController`。
+
+**关键代码**：
+
+```ts
+export const tools = [searchTool]
+```
+
+```ts
+const controller = new AbortController()
+activeController = controller
+```
+
+前者是新增工具的唯一注册入口；后者确保 ESC 只会取消当前正在运行的一轮请求。
+
+**验证**：
+
+- `pnpm test --runInBand` 通过，包含 `search.test.ts` 的两条实现级测试。
+- `pnpm typecheck` 与 `pnpm build` 通过。
+- `pnpm dev` 输入 `s的天气怎么 样` 后，用户输入只回显一次。
+
 ## 当前结构
 
 ```text
@@ -214,6 +245,10 @@ src/
     agent.ts    # 模型、工具、MemorySaver 与流式调用
     cli.ts      # 终端聊天循环、ESC 取消和可执行入口
     command.ts  # Commander 命令定义
+    tools/
+      index.ts        # 工具元信息与统一注册表
+      search.ts       # 示例搜索实现
+      search.test.ts  # 搜索实现单元测试
   index.ts      # 基础示例函数
 ```
 
