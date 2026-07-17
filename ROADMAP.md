@@ -17,6 +17,9 @@
 - 配置构建后的 Agent CLI 启动脚本。
 - 支持通过环境变量配置 Moonshot API Base URL。
 - 接入 LangGraph MemorySaver，实现同一进程内的会话记忆。
+- 接入 Commander.js，并注册 `miniagent` 全局 CLI 命令。
+- 将 Commander 命令定义抽离至 `src/agent/command.ts`。
+- 抽取 CLI readline 接口创建函数。
 
 ## 进行中
 
@@ -36,3 +39,4 @@
 - 构建产物已完成 Moonshot 集成测试：`hi` 与 `who are you` 均收到正常流式回复。
 - `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过。
 - MemorySaver 集成测试通过：同一线程内保存并正确取回用户名 `Pupil`。
+- `miniagent --help`、`miniagent --version` 与交互启动验证通过。

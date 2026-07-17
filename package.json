@@ -1,8 +1,11 @@
 {
 	"name": "mini-agent",
 	"version": "1.0.0",
-	"description": "A TypeScript project scaffold with Jest unit tests.",
+	"description": "A personal AI Agent like OpenClaw, including tools, skills, memory, hook, sub-agent, MCP sever, etc. Run in the terminal.",
 	"main": "dist/index.js",
+	"bin": {
+		"miniagent": "dist/agent/cli.js"
+	},
 	"scripts": {
 		"build": "tsc",
 		"dev": "ts-node src/agent/cli.ts",
@@ -35,6 +38,7 @@
 		"@langchain/core": "^1.2.3",
 		"@langchain/langgraph": "^1.4.8",
 		"@langchain/openai": "^1.5.5",
+		"commander": "^15.0.0",
 		"dotenv": "^17.4.2",
 		"langchain": "^1.5.3",
 		"zod": "^4.4.3"

@@ -1,15 +1,22 @@
+#!/usr/bin/env node
+
 import * as readline from 'readline'
 import { runAgentStream } from './agent'
+import { createProgram } from './command'
 
 // 固定 ID 让 MemorySaver 在本次 CLI 进程中续接每一轮消息。
 // 退出 CLI 后内存清空，下一次启动会开始新的会话。
 const THREAD_ID = 'user-session-1'
 
 // readline 将终端标准输入和输出封装为可交互的行级读写接口。
-const rl = readline.createInterface({
-	input: process.stdin,
-	output: process.stdout,
-})
+function createInterface(): readline.Interface {
+	return readline.createInterface({
+		input: process.stdin,
+		output: process.stdout,
+	})
+}
+
+const rl = createInterface()
 
 // 将 readline 基于回调的 question API 包装为 Promise，方便在 while 循环中使用 await。
 function prompt(question: string): Promise<string> {
@@ -64,4 +71,4 @@ async function main(): Promise<void> {
 	}
 }
 
-main()
+void createProgram(main).parseAsync(process.argv)

@@ -53,6 +53,21 @@ pnpm start
 
 `pnpm start` 执行 `dist/agent/cli.js`，首次运行或修改源码后需先执行 `pnpm build`。
 
+## 全局命令
+
+构建后通过 npm 链接将当前项目注册为本机 `miniagent` 命令：
+
+```bash
+pnpm build
+npm link
+
+miniagent
+miniagent --help
+miniagent --version
+```
+
+`miniagent` 的版本与描述直接读取 `package.json`。
+
 ## 测试约定
 
 测试文件与源码放在同一目录，使用 `*.test.ts` 命名。Jest 会通过 `ts-jest` 直接执行 TypeScript 测试文件。
