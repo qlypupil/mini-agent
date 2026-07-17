@@ -1,8 +1,8 @@
 import * as readline from 'readline'
 import { runAgentStream } from './agent'
 
-// 当前 Agent 未配置 checkpointer；固定 ID 仅传递给本次运行配置，
-// 不会自动保存或恢复历史消息。
+// 固定 ID 让 MemorySaver 在本次 CLI 进程中续接每一轮消息。
+// 退出 CLI 后内存清空，下一次启动会开始新的会话。
 const THREAD_ID = 'user-session-1'
 
 // readline 将终端标准输入和输出封装为可交互的行级读写接口。

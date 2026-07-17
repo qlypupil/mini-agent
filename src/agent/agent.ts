@@ -1,5 +1,6 @@
 import { createAgent } from 'langchain'
 import { tool } from '@langchain/core/tools'
+import { MemorySaver } from '@langchain/langgraph'
 import { ChatOpenAI } from '@langchain/openai'
 import { z } from 'zod'
 import * as dotenv from 'dotenv'
@@ -47,22 +48,26 @@ const model = new ChatOpenAI({
 	streaming: true,
 })
 
+// MemorySaver 按 threadId 保存当前 Node.js 进程内的对话状态。
+const checkpointer = new MemorySaver()
+
 // Agent 负责根据模型输出决定是否调用 tools，并继续生成最终回答。
 const agent = createAgent({
 	model,
 	tools: [search],
 	systemPrompt: 'You are a helpful assistant.',
+	checkpointer,
 })
 
 /**
  * 以流式方式运行 agent，将 token 逐个回调给调用方
  *
- * 当前 Agent 未配置 checkpointer，threadId 仅作为执行配置传入，
- * 不会自动持久化或续接会话历史。
+ * MemorySaver 会在当前进程内按 threadId 保存并续接会话历史。
+ * 进程重启后，内存中的历史会被清空。
  *
  * @param {string} userMessage - 当前用户输入
  * @param {Function} onToken   - 每个 token 到来时的回调 (token: string) => void
- * @param {string} threadId    - 会话 ID，相同 ID 自动续上历史记录
+ * @param {string} threadId    - 会话 ID，相同 ID 会续接当前进程内的历史记录
  * @returns {Promise<string>}  完整的 AI 回复文本
  */
 export async function runAgentStream(

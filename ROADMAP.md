@@ -16,6 +16,7 @@
 - 补充 Agent CLI 的交互流程与 readline 使用注释。
 - 配置构建后的 Agent CLI 启动脚本。
 - 支持通过环境变量配置 Moonshot API Base URL。
+- 接入 LangGraph MemorySaver，实现同一进程内的会话记忆。
 
 ## 进行中
 
@@ -34,3 +35,4 @@
 - `pnpm typecheck`、`pnpm build` 与 `pnpm start` 通过。
 - 构建产物已完成 Moonshot 集成测试：`hi` 与 `who are you` 均收到正常流式回复。
 - `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过。
+- MemorySaver 集成测试通过：同一线程内保存并正确取回用户名 `Pupil`。

@@ -25,6 +25,10 @@ cp .env.example .env
 
 `MOONSHOT_API_KEY` 是必填项；`MOONSHOT_BASE_URL` 可选，未设置时使用 Moonshot 默认地址。
 
+## 会话记忆
+
+Agent 使用 LangGraph `MemorySaver` 按 `threadId` 保存短期会话历史。CLI 在一次启动期间使用固定的会话 ID，因此后续提问可以引用前文；退出 CLI 或重启进程后历史会清空。
+
 ## 常用命令
 
 ```bash
