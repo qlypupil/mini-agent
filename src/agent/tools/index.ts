@@ -1,5 +1,6 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
+import { execTool } from './exec_tool'
 import { readFileTool } from './read_file_tool'
 import { search } from './search'
 import { writeFileTool } from './write_file_tool'
@@ -47,5 +48,32 @@ const writeFile = tool(
 	},
 )
 
+const exec = tool(
+	(input) => execTool(input),
+	{
+		name: 'exec',
+		// schema 只暴露结构化的只读操作，execTool 仍会在运行时二次校验。
+		description:
+			'Run a safe read-only command in the current directory. Shell syntax and write operations are not supported.',
+		schema: z.object({
+			command: z
+				.enum(['ls', 'find', 'rg', 'pwd', 'git_status', 'git_diff', 'git_log'])
+				.describe('The safe read-only command to run.'),
+			path: z
+				.string()
+				.optional()
+				.describe('Optional relative path for ls, find, or rg.'),
+			query: z.string().optional().describe('Required search text when command is rg.'),
+			maxDepth: z
+				.number()
+				.int()
+				.min(0)
+				.max(5)
+				.optional()
+				.describe('Optional maximum depth when command is find.'),
+		}),
+	},
+)
+
 // Agent 统一从此注册表加载工具；新增工具时在这里声明元信息并加入数组。
-export const tools = [searchTool, readFile, writeFile]
+export const tools = [searchTool, readFile, writeFile, exec]
