@@ -339,6 +339,49 @@ if (outputBytes > MAX_OUTPUT_BYTES) {
 - `pnpm test --runInBand`、`pnpm typecheck`、`pnpm build` 通过；共 5 个测试套件、18 条测试。
 - 真实 `miniagent` 集成测试中，模型调用 `exec` 的 `ls src`，正确列出 `agent`、`index.test.ts` 与 `index.ts`。
 
+## 12. [`48d945f` `feat: 添加受限 JavaScript 执行工具`](https://github.com/qlypupil/mini-agent/commit/48d945f87c72518f1b7b56b04df5d62aa38f3007)
+
+**目标**：让 Agent 在不访问项目文件、网络、子进程或宿主环境变量的前提下，执行受限的 JavaScript 计算并获取结果。
+
+**主要改动**：
+
+- 新增 `run_js_tool.ts`，以 `node --permission --input-type=module --eval` 在独立 Node.js 子进程中运行 JavaScript。
+- 子进程不启动 shell，只继承 `PATH`，避免模型代码读取 `.env` 中的 API Key 等宿主环境变量。
+- 默认拒绝文件系统、网络、子进程、worker 等权限；同时限制代码为 20 KB、运行时间为 5 秒、输出为 64 KB。
+- 将 Node.js 缺失、语法错误、运行时异常、超时和超出输出限制统一转换为工具结果，供 Agent 继续处理。
+- 在 `tools/index.ts` 注册 `run_js` 的名称、说明与 Zod 输入 schema。
+- 新增 9 条同目录单元测试，覆盖单行、多行异步、复杂数据处理、特殊字符、语法错误、运行时错误与隔离边界。
+
+**关键代码**：
+
+```ts
+const child = spawn(
+  'node',
+  ['--permission', '--input-type=module', '--eval', code],
+  {
+    cwd: process.cwd(),
+    shell: false,
+    env: { PATH: process.env.PATH ?? '' },
+  },
+)
+```
+
+`--permission` 使子进程默认没有敏感系统能力；`shell: false` 防止 JavaScript 源码经 shell 解释；精简环境变量避免继承调用 Agent 的机密配置。
+
+```ts
+if (outputBytes > MAX_OUTPUT_BYTES) {
+  exceededOutputLimit = true
+  child.kill()
+}
+```
+
+当输出超出 64 KB 时会终止子进程，避免大规模日志占用模型上下文。
+
+**验证**：
+
+- `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 6 个测试套件、27 条测试。
+- 真实 `miniagent` 集成测试中，模型调用 `run_js` 执行 `console.log(2 + 3)`，正确返回 `5`。
+
 ## 当前结构
 
 ```text
@@ -357,6 +400,8 @@ src/
       write_file_tool.test.ts  # 文件写入安全边界单元测试
       exec_tool.ts             # 当前目录内的只读命令执行实现
       exec_tool.test.ts        # 命令白名单与路径边界单元测试
+      run_js_tool.ts           # Node 权限模型下的受限 JavaScript 执行实现
+      run_js_tool.test.ts      # JavaScript 执行与隔离边界单元测试
   index.ts      # 基础示例函数
 ```
 
