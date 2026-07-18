@@ -28,6 +28,8 @@
 - 修复 ESC 取消机制导致的 readline 中文输入重复回显。
 - 新增只读当前工作目录的 `read_file` 工具及安全边界测试。
 - 补充 `read_file` 路径边界、敏感文件拦截和文本读取注释。
+- 新增受限当前工作目录的 `write_file` 工具及安全边界测试。
+- 补充 `write_file` 目录边界、符号链接和模型写入边界注释。
 
 ## 进行中
 
@@ -52,3 +54,4 @@
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（2 个测试套件、3 条测试）。
 - `pnpm dev` 中文天气输入集成测试通过，用户输入仅回显一次。
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（3 个测试套件、7 条测试）。
+- `write_file` 单元测试与真实 Agent 集成测试通过（4 个测试套件、13 条测试）。

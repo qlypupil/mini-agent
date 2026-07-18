@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { readFileTool } from './read_file_tool'
 import { search } from './search'
+import { writeFileTool } from './write_file_tool'
 
 const searchTool = tool(
 	({ query }: { query: string }) => search(query),
@@ -29,5 +30,22 @@ const readFile = tool(
 	},
 )
 
+const writeFile = tool(
+	({ path, content }: { path: string; content: string }) =>
+		writeFileTool(path, content),
+	{
+		name: 'write_file',
+		// 内容由模型生成，路径与敏感文件限制必须由 writeFileTool 强制执行。
+		description:
+			'Create a new UTF-8 file or overwrite an existing file in the current directory or its subdirectories.',
+		schema: z.object({
+			path: z
+				.string()
+				.describe('A relative path to a file in the current directory.'),
+			content: z.string().describe('The complete UTF-8 text content to write.'),
+		}),
+	},
+)
+
 // Agent 统一从此注册表加载工具；新增工具时在这里声明元信息并加入数组。
-export const tools = [searchTool, readFile]
+export const tools = [searchTool, readFile, writeFile]
