@@ -4,6 +4,7 @@ import { currentTimeTool } from './current_time_tool'
 import { execTool } from './exec_tool'
 import { readFileTool } from './read_file_tool'
 import { runJsTool } from './run_js_tool'
+import { webFetchTool } from './web_fetch_tool'
 import { webSearchTool } from './web_search_tool'
 import { writeFileTool } from './write_file_tool'
 
@@ -89,5 +90,26 @@ const currentTime = tool(
 	},
 )
 
+const webFetch = tool(
+	({ url }: { url: string }) => webFetchTool(url),
+	{
+		name: 'web_fetch',
+		// webFetchTool 会校验公网地址、重定向、超时和响应体大小。
+		description:
+			'Fetch a public HTTP or HTTPS URL and return its text content. Local network URLs and binary downloads are not supported.',
+		schema: z.object({
+			url: z.string().url().describe('The public HTTP or HTTPS URL to fetch.'),
+		}),
+	},
+)
+
 // Agent 统一从此注册表加载工具；新增工具时在这里声明元信息并加入数组。
-export const tools = [readFile, writeFile, exec, runJs, currentTime, webSearchTool]
+export const tools = [
+	readFile,
+	writeFile,
+	exec,
+	runJs,
+	currentTime,
+	webSearchTool,
+	webFetch,
+]

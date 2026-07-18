@@ -36,6 +36,7 @@
 - 新增 Tavily `web_search` 工具及 SDK 调用单元测试。
 - 移除返回固定结果的示例 `search` 工具，避免与 Tavily 搜索能力冲突。
 - 新增读取本机日期、时间与时区的 `current_time` 工具，处理“今天”和“现在”问题。
+- 新增受限公网访问的 `web_fetch` 工具及 URL、响应大小与网络失败测试。
 
 ## 进行中
 
@@ -66,3 +67,4 @@
 - Tavily `web_search` 使用原生 `TavilySearch` 工具以兼容 Moonshot 的工具循环；单元测试、类型检查与构建通过，真实新闻搜索获得最终摘要。
 - 移除示例 `search` 工具后，`pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（6 个测试套件、27 条测试）；构建产物仅注册 `web_search`，不再注册旧 `search`。
 - `current_time` 单元测试、类型检查与构建通过（7 个测试套件、28 条测试）；真实 CLI 验证返回本机日期 `Saturday, July 18, 2026`。
+- `web_fetch` 单元测试、类型检查与构建通过（8 个测试套件、34 条测试）；真实 Agent 抓取并概述 `https://www.mianshipai.com/` 成功。
