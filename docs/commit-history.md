@@ -425,6 +425,48 @@ const currentTime = tool(() => currentTimeTool(), {
 - 真实 CLI 的世界杯新闻提问显示 `web_search started/completed` 并输出搜索结果摘要。
 - 真实 CLI 的日期提问调用 `current_time`，返回 `Saturday, July 18, 2026`。
 
+## 14. [`b58df1e` `feat: 添加安全网页抓取工具`](https://github.com/qlypupil/mini-agent/commit/b58df1e96f9cf9ca0d39464ef1a4afd8629a0182)
+
+**目标**：让 Agent 能获取公开网页的文本内容，同时避免将任意 URL 请求变成访问本机、内网或大文件的入口。
+
+**主要改动**：
+
+- 新增 `web_fetch_tool.ts`，使用 Node.js 原生 `fetch` 获取网页文本，不增加额外依赖。
+- 仅允许 HTTP(S)，拒绝 `localhost`、回环地址、私网、共享地址和链路本地地址；每次重定向都会重新校验目标地址。
+- 限制请求 10 秒、最多 3 次重定向和 1 MB 网络响应。
+- 非文本资源只返回类型；文本传入 Agent 前限制为 8 KB，并附加截断标记，避免超过模型上下文。
+- 网络错误、超时、HTTP 错误、无效跳转和响应过大统一以 `Error: ...` 返回给 Agent。
+- 在 `tools/index.ts` 注册 `web_fetch` 的名称、说明和 URL schema。
+- 新增 6 条同目录单元测试，覆盖成功抓取、协议拒绝、内网拒绝、网络错误、1 MB 限制与 8 KB 截断。
+
+**关键代码**：
+
+```ts
+const addresses = isIP(hostname)
+  ? [{ address: hostname }]
+  : await lookup(hostname, { all: true, verbatim: true })
+
+if (addresses.some(({ address }) => isPrivateAddress(address))) {
+  throw new Error('Local network URLs are not allowed.')
+}
+```
+
+目标主机先经 DNS 解析并检查地址范围，重定向后的 URL 也会重复执行这段检查，减少 SSRF 风险。
+
+```ts
+if (receivedBytes > MAX_AGENT_CONTENT_BYTES) {
+  await reader.cancel()
+  return `${content}\n\n[Content truncated at 8 KB.]`
+}
+```
+
+抓取层可接收最多 1 MB 响应，但只向模型交付 8 KB 文本，防止网页内容消耗全部上下文。
+
+**验证**：
+
+- `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 8 个测试套件、34 条测试。
+- 真实 `miniagent` 调用 `web_fetch` 获取 `https://www.mianshipai.com/`，成功概述“前端面试派”的页面内容。
+
 ## 当前结构
 
 ```text
@@ -445,6 +487,8 @@ src/
       run_js_tool.test.ts      # JavaScript 执行与隔离边界单元测试
       web_search_tool.ts       # Tavily 通用网页搜索实现
       web_search_tool.test.ts  # Tavily SDK 调用单元测试
+      web_fetch_tool.ts        # 受限公网网页抓取实现
+      web_fetch_tool.test.ts   # URL、响应大小与网络失败单元测试
       current_time_tool.ts      # 本机日期、时间与时区读取实现
       current_time_tool.test.ts # 本机时间工具单元测试
   index.ts      # 基础示例函数
