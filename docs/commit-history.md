@@ -382,6 +382,49 @@ if (outputBytes > MAX_OUTPUT_BYTES) {
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 6 个测试套件、27 条测试。
 - 真实 `miniagent` 集成测试中，模型调用 `run_js` 执行 `console.log(2 + 3)`，正确返回 `5`。
 
+## 13. [`b5ff031` `feat: 接入实时搜索与本机时间工具`](https://github.com/qlypupil/mini-agent/commit/b5ff031b75ac19fab8845fb92bc233c1a79da889)
+
+**目标**：让 Agent 能可靠处理实时信息，避免用模型旧知识回答新闻和当前日期。
+
+**主要改动**：
+
+- 新增 `@langchain/tavily`，以官方 `TavilySearch` 原生工具注册 `web_search`，每次最多 3 条通用结果并要求 Tavily 生成答案。
+- 移除返回固定天气结果的示例 `search` 工具，避免模型误选假搜索。
+- 新增 `current_time`，返回本机 ISO 时间、时区与本地格式化时间，专门处理“今天”和“现在”。
+- 系统提示词规定：日期和时间必须调用 `current_time`；新闻、天气、价格和体育等实时信息必须调用 `web_search` 并使用成功结果。
+- CLI 显示工具开始、完成和失败状态；识别 Tavily 的 `{ error }` 返回，避免将 API 业务错误误报为完成。
+- 新增共享 `env.ts`，静默且只加载一次 `.env`，消除重复 dotenv 日志。
+- 修复 stdin EOF 后 readline 仍请求下一轮输入的异常。
+
+**关键代码**：
+
+```ts
+export const webSearchTool = new TavilySearch({
+  name: 'web_search',
+  maxResults: 3,
+  topic: 'general',
+  includeAnswer: true,
+  tavilyApiKey: process.env.TAVILY_API_KEY,
+})
+```
+
+直接注册官方工具实例可保持 Moonshot 的工具调用循环兼容；通用包装会导致本项目中工具完成后没有最终回答。
+
+```ts
+const currentTime = tool(() => currentTimeTool(), {
+  name: 'current_time',
+  schema: z.object({}),
+})
+```
+
+本机时间工具不依赖网页搜索，因此不会因搜索结果的时区或索引时间而把“今天”回答错误。
+
+**验证**：
+
+- `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 7 个测试套件、28 条测试。
+- 真实 CLI 的世界杯新闻提问显示 `web_search started/completed` 并输出搜索结果摘要。
+- 真实 CLI 的日期提问调用 `current_time`，返回 `Saturday, July 18, 2026`。
+
 ## 当前结构
 
 ```text
@@ -392,8 +435,6 @@ src/
     command.ts  # Commander 命令定义
     tools/
       index.ts        # 工具元信息与统一注册表
-      search.ts       # 示例搜索实现
-      search.test.ts  # 搜索实现单元测试
       read_file_tool.ts       # 当前目录内的安全文件读取实现
       read_file_tool.test.ts  # 文件读取安全边界单元测试
       write_file_tool.ts       # 当前目录内的安全文件写入实现
@@ -402,11 +443,16 @@ src/
       exec_tool.test.ts        # 命令白名单与路径边界单元测试
       run_js_tool.ts           # Node 权限模型下的受限 JavaScript 执行实现
       run_js_tool.test.ts      # JavaScript 执行与隔离边界单元测试
+      web_search_tool.ts       # Tavily 通用网页搜索实现
+      web_search_tool.test.ts  # Tavily SDK 调用单元测试
+      current_time_tool.ts      # 本机日期、时间与时区读取实现
+      current_time_tool.test.ts # 本机时间工具单元测试
   index.ts      # 基础示例函数
 ```
 
 ## 后续边界
 
 - `MemorySaver` 仅提供进程内短期记忆；需要跨重启保存时，应替换为数据库 checkpointer。
-- `search` 仍是示例工具，未接入真实检索服务。
+- `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
+- `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - 流式事件处理仍保留部分 `any`，后续可基于 LangChain 事件类型进一步收紧。
