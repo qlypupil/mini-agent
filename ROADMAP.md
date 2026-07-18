@@ -26,6 +26,8 @@
 - 将 search 工具抽离至 `src/agent/tools`，并补充同目录单元测试。
 - 新增 tools 注册表，集中维护工具的名称、描述和输入 schema。
 - 修复 ESC 取消机制导致的 readline 中文输入重复回显。
+- 新增只读当前工作目录的 `read_file` 工具及安全边界测试。
+- 补充 `read_file` 路径边界、敏感文件拦截和文本读取注释。
 
 ## 进行中
 
@@ -49,3 +51,4 @@
 - ESC 集成测试通过：流式响应在 3 秒后被取消，CLI 恢复到下一轮输入。
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（2 个测试套件、3 条测试）。
 - `pnpm dev` 中文天气输入集成测试通过，用户输入仅回显一次。
+- `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（3 个测试套件、7 条测试）。
