@@ -301,6 +301,44 @@ await writeFile(writablePath, content, 'utf8')
 - `pnpm test --runInBand`、`pnpm typecheck`、`pnpm build` 通过；共 4 个测试套件、13 条测试。
 - 真实 `miniagent` 集成测试中，模型调用 `write_file` 创建测试文件，文件内容精确匹配后已清理。
 
+## 11. [`fa286a5` `feat: 添加安全命令执行工具`](https://github.com/qlypupil/mini-agent/commit/fa286a5002f4536b3fe429428efd756c818e2ae4)
+
+**目标**：让 Agent 在当前工作目录中执行受限的只读查询，同时禁止模型将任意字符串交给 shell。
+
+**主要改动**：
+
+- 新增 `exec_tool.ts`，仅支持 `ls`、`find`、`rg`、`pwd` 和只读 Git 查询。
+- 使用结构化 `command`、`path`、`query` 与 `maxDepth` 输入，而不是接收任意 shell 命令。
+- 使用 `spawn(..., { shell: false })`，禁止管道、重定向、命令替换和 shell 注入。
+- 复用当前目录、敏感路径和符号链接边界校验；限制单次命令 5 秒、输出 64 KB。
+- 新增 5 条单元测试，覆盖目录列表、工作目录、白名单外命令、目录外路径和敏感路径。
+
+**关键代码**：
+
+```ts
+const child = spawn(command, args, {
+  cwd,
+  shell: false,
+  stdio: ['ignore', 'pipe', 'pipe'],
+})
+```
+
+不启动 shell，因此模型输入不能借助 shell 语法组合出额外命令。
+
+```ts
+if (outputBytes > MAX_OUTPUT_BYTES) {
+  exceededOutputLimit = true
+  child.kill()
+}
+```
+
+超过 64 KB 时终止子进程，避免大日志或递归列表占满模型上下文。
+
+**验证**：
+
+- `pnpm test --runInBand`、`pnpm typecheck`、`pnpm build` 通过；共 5 个测试套件、18 条测试。
+- 真实 `miniagent` 集成测试中，模型调用 `exec` 的 `ls src`，正确列出 `agent`、`index.test.ts` 与 `index.ts`。
+
 ## 当前结构
 
 ```text
@@ -317,6 +355,8 @@ src/
       read_file_tool.test.ts  # 文件读取安全边界单元测试
       write_file_tool.ts       # 当前目录内的安全文件写入实现
       write_file_tool.test.ts  # 文件写入安全边界单元测试
+      exec_tool.ts             # 当前目录内的只读命令执行实现
+      exec_tool.test.ts        # 命令白名单与路径边界单元测试
   index.ts      # 基础示例函数
 ```
 
