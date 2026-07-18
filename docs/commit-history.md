@@ -268,6 +268,39 @@ if (segments.some((segment) => segment === '.git' || segment.startsWith('.env'))
 
 **验证**：`pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 3 个测试套件、7 条测试。
 
+## 10. [`ca73113` `feat: 添加安全文件写入工具`](https://github.com/qlypupil/mini-agent/commit/ca73113780d274a0f8f5596b50b3f11a2dbf1a19)
+
+**目标**：允许 Agent 在当前工作目录中创建或覆写 UTF-8 文本文件，同时防止模型改写目录外、环境变量或 Git 元数据。
+
+**主要改动**：
+
+- 新增 `write_file_tool.ts`，支持创建新文件和覆写已有普通文件。
+- 对新建文件校验真实父目录，对覆写文件校验规范化后的真实文件路径。
+- 拒绝绝对路径、`..` 越界、符号链接越界、`.env*` 和 `.git/`。
+- 不创建缺失父目录，避免工具隐式扩张写入范围。
+- 在 `tools/index.ts` 注册 `write_file`，输入为相对 `path` 与完整 `content`。
+- 新增 6 条单元测试，覆盖创建、覆写和四类拒绝路径。
+
+**关键代码**：
+
+```ts
+const resolvedParentPath = await realpath(dirname(requestedPath))
+assertSafePath(assertInsideRoot(root, resolvedParentPath))
+```
+
+新建文件时先验证父目录的真实位置，防止通过父目录符号链接把文件写到工作目录外。
+
+```ts
+await writeFile(writablePath, content, 'utf8')
+```
+
+边界校验通过后，`writeFile` 以 UTF-8 创建文件或完整覆写已有文件。
+
+**验证**：
+
+- `pnpm test --runInBand`、`pnpm typecheck`、`pnpm build` 通过；共 4 个测试套件、13 条测试。
+- 真实 `miniagent` 集成测试中，模型调用 `write_file` 创建测试文件，文件内容精确匹配后已清理。
+
 ## 当前结构
 
 ```text
@@ -282,6 +315,8 @@ src/
       search.test.ts  # 搜索实现单元测试
       read_file_tool.ts       # 当前目录内的安全文件读取实现
       read_file_tool.test.ts  # 文件读取安全边界单元测试
+      write_file_tool.ts       # 当前目录内的安全文件写入实现
+      write_file_tool.test.ts  # 文件写入安全边界单元测试
   index.ts      # 基础示例函数
 ```
 
