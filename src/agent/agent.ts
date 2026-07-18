@@ -1,11 +1,9 @@
+import './env'
 import { createAgent } from 'langchain'
 import { MemorySaver } from '@langchain/langgraph'
 import { ChatOpenAI } from '@langchain/openai'
-import * as dotenv from 'dotenv'
 import { meta } from 'zod/v4/core'
 import { tools } from './tools'
-
-dotenv.config()
 
 // Moonshot 兼容 OpenAI Chat Completions API，因此复用 ChatOpenAI 客户端。
 const MOONSHOT_API_KEY = process.env.MOONSHOT_API_KEY
@@ -33,9 +31,16 @@ const checkpointer = new MemorySaver()
 const agent = createAgent({
 	model,
 	tools,
-	systemPrompt: 'You are a helpful assistant.',
+	systemPrompt:
+		'You are a helpful assistant. For questions about the current date or time, you must use current_time and answer from its result. For other current, recent, or date-sensitive information such as news, weather, prices, or sports, you must use web_search before answering. Do not answer real-time questions from memory. When web_search returns results, answer from those results and do not claim the search failed. Only state that live information could not be retrieved when the tool result explicitly reports an error.',
 	checkpointer,
 })
+
+type ToolEvent = {
+	name: string
+	status: 'started' | 'completed' | 'failed'
+	error?: string
+}
 
 /**
  * 以流式方式运行 agent，将 token 逐个回调给调用方
@@ -54,6 +59,7 @@ export async function runAgentStream(
 	onToken: (token: string) => void,
 	threadId: string = 'default-session',
 	signal?: AbortSignal,
+	onToolEvent?: (event: ToolEvent) => void,
 ): Promise<string> {
 	const config = {
 		configurable: {
@@ -67,11 +73,33 @@ export async function runAgentStream(
 	)
 
 	let fullResponse = ''
+	const reportedToolCalls = new Set<string>()
 
 	for await (const chunk of stream as any) {
 		// streamMode: 'messages' 的每个事件由消息对象和其运行元数据组成。
 		const message = chunk[0]
 		const metadata = chunk[1]
+
+		if (metadata?.langgraph_node === 'tools') {
+			const toolName = (message as any).name ?? 'unknown tool'
+			const content = String((message as any).content ?? '')
+			let toolError: string | undefined
+			try {
+				const result = JSON.parse(content)
+				if (typeof result.error === 'string') {
+					toolError = result.error
+				}
+			} catch {
+				// 非 JSON 工具结果仍可正常显示为完成状态。
+			}
+			const isFailure = (message as any).status === 'error' || Boolean(toolError)
+			onToolEvent?.({
+				name: toolName,
+				status: isFailure ? 'failed' : 'completed',
+				error: isFailure ? toolError ?? content : undefined,
+			})
+			continue
+		}
 
 		// 仅向调用方转发模型节点生成的文本，跳过工具和其他图节点事件。
 		if (metadata?.langgraph_node !== 'model_request') {
@@ -83,6 +111,15 @@ export async function runAgentStream(
 			(message as any).content ?? (message as any).kwargs?.content ?? ''
 
 		const toolCallChunks = (message as any).tool_call_chunks ?? []
+		const toolCalls = (message as any).tool_calls ?? []
+
+		for (const toolCall of toolCalls) {
+			const identifier = toolCall.id ?? toolCall.name
+			if (toolCall.name && !reportedToolCalls.has(identifier)) {
+				reportedToolCalls.add(identifier)
+				onToolEvent?.({ name: toolCall.name, status: 'started' })
+			}
+		}
 
 		// 工具调用参数会在流中分片到达，不能作为用户可见的回复文本输出。
 		if (!content || toolCallChunks.length > 0) {

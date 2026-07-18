@@ -19,6 +19,7 @@ function createInterface(): readline.Interface {
 const rl = createInterface()
 
 let activeController: AbortController | undefined
+let inputClosed = false
 
 // 整个 CLI 生命周期内保持 raw mode，避免在 readline 回调期间切换模式而重复回显输入。
 function setupKeyboardControls(): () => void {
@@ -69,6 +70,20 @@ async function chat(userInput: string): Promise<void> {
 			},
 			THREAD_ID,
 			controller.signal,
+			(event) => {
+				if (event.status === 'started') {
+					process.stdout.write(`\n[Tool] ${event.name} started.\n`)
+					return
+				}
+
+				if (event.status === 'failed') {
+					const detail = event.error ? `: ${event.error.slice(0, 200)}` : ''
+					process.stdout.write(`\n[Tool] ${event.name} failed${detail}\n\nAI: `)
+					return
+				}
+
+				process.stdout.write(`\n[Tool] ${event.name} completed.\n\nAI: `)
+			},
 		)
 		process.stdout.write('\n\n')
 	} catch (error) {
@@ -86,13 +101,17 @@ async function chat(userInput: string): Promise<void> {
 
 async function main(): Promise<void> {
 	const stopKeyboardControls = setupKeyboardControls()
-	rl.once('close', stopKeyboardControls)
+	rl.once('close', () => {
+		inputClosed = true
+		stopKeyboardControls()
+	})
 
 	console.log('=== Agent 聊天控制台 (输入 "exit" 退出) ===\n')
 
-	while (true) {
+	while (!inputClosed) {
 		// prompt 会等待用户提交一整行输入，不会阻塞 Node.js 的事件循环。
 		const userInput = await prompt('You: ')
+		if (inputClosed) break
 
 		if (!userInput.trim()) continue
 		if (userInput.toLowerCase() === 'exit') {

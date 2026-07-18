@@ -33,6 +33,9 @@
 - 新增只读命令白名单的 `exec` 工具及安全边界测试。
 - 补充 `exec` shell 隔离、超时、输出限制和参数解析注释。
 - 新增受限 Node 权限模型的 `run_js` 工具及隔离测试。
+- 新增 Tavily `web_search` 工具及 SDK 调用单元测试。
+- 移除返回固定结果的示例 `search` 工具，避免与 Tavily 搜索能力冲突。
+- 新增读取本机日期、时间与时区的 `current_time` 工具，处理“今天”和“现在”问题。
 
 ## 进行中
 
@@ -60,3 +63,6 @@
 - `write_file` 单元测试与真实 Agent 集成测试通过（4 个测试套件、13 条测试）。
 - `exec` 单元测试与真实 Agent 列出 `src` 集成测试通过（5 个测试套件、18 条测试）。
 - `run_js` 单元测试已覆盖多行异步代码、复杂数据处理、语法错误、运行时异常和特殊字符；`pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（6 个测试套件、27 条测试）。
+- Tavily `web_search` 使用原生 `TavilySearch` 工具以兼容 Moonshot 的工具循环；单元测试、类型检查与构建通过，真实新闻搜索获得最终摘要。
+- 移除示例 `search` 工具后，`pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（6 个测试套件、27 条测试）；构建产物仅注册 `web_search`，不再注册旧 `search`。
+- `current_time` 单元测试、类型检查与构建通过（7 个测试套件、28 条测试）；真实 CLI 验证返回本机日期 `Saturday, July 18, 2026`。

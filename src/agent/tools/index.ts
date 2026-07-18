@@ -1,21 +1,11 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
+import { currentTimeTool } from './current_time_tool'
 import { execTool } from './exec_tool'
 import { readFileTool } from './read_file_tool'
 import { runJsTool } from './run_js_tool'
-import { search } from './search'
+import { webSearchTool } from './web_search_tool'
 import { writeFileTool } from './write_file_tool'
-
-const searchTool = tool(
-	({ query }: { query: string }) => search(query),
-	{
-		name: 'search',
-		description: 'Search the web for information',
-		schema: z.object({
-			query: z.string().describe('The query to use in your search.'),
-		}),
-	},
-)
 
 const readFile = tool(
 	({ path }: { path: string }) => readFileTool(path),
@@ -89,5 +79,15 @@ const runJs = tool(
 	},
 )
 
+const currentTime = tool(
+	() => currentTimeTool(),
+	{
+		name: 'current_time',
+		description:
+			'Get the current date, time, and time zone from the local system. Use this for questions about today or the current time.',
+		schema: z.object({}),
+	},
+)
+
 // Agent 统一从此注册表加载工具；新增工具时在这里声明元信息并加入数组。
-export const tools = [searchTool, readFile, writeFile, exec, runJs]
+export const tools = [readFile, writeFile, exec, runJs, currentTime, webSearchTool]

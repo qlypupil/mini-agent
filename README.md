@@ -23,7 +23,7 @@ cp .env.example .env
 
 应用入口会通过 `dotenv` 自动加载 `.env`。`.env` 已被 Git 忽略，禁止提交密钥或 token。
 
-`MOONSHOT_API_KEY` 是必填项；`MOONSHOT_BASE_URL` 可选，未设置时使用 Moonshot 默认地址。
+`MOONSHOT_API_KEY` 是必填项；`MOONSHOT_BASE_URL` 可选，未设置时使用 Moonshot 默认地址。使用 `web_search` 时还需要配置 `TAVILY_API_KEY`。
 
 ## 会话记忆
 
@@ -36,6 +36,10 @@ Agent 可以读取或写入当前工作目录及其子目录中的 UTF-8 普通�
 `exec` 只允许执行 `ls`、`find`、`rg`、`pwd` 和只读 Git 查询。它不解析 shell 语法，不接受任意命令，并限制单次执行 5 秒、输出 64 KB，避免模型执行删除或其他写入操作。
 
 `run_js` 在 Node 权限模型子进程中执行 JavaScript。子进程不继承项目环境变量，且默认没有文件系统、网络、子进程或 worker 权限；单次执行限制 5 秒、代码 20 KB、输出 64 KB。
+
+`web_search` 使用 Tavily 搜索当前网页信息，每次最多返回 3 条通用搜索结果，并附带 Tavily 生成的答案。查询内容会发送给 Tavily API，并消耗对应的 API 配额。
+
+`current_time` 从本机读取当前日期、时间和时区，专门处理“今天”和“现在”问题。新闻、天气、价格和体育赛事等实时信息由 `web_search` 检索，Agent 会基于成功返回的结果作答。CLI 会显示工具的开始、完成或失败状态，便于区分模型未检索与检索失败。
 
 ## 常用命令
 
