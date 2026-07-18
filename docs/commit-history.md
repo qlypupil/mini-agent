@@ -237,6 +237,37 @@ activeController = controller
 - `pnpm typecheck` 与 `pnpm build` 通过。
 - `pnpm dev` 输入 `s的天气怎么 样` 后，用户输入只回显一次。
 
+## 9. [`847adab` `feat: 添加安全文件读取工具`](https://github.com/qlypupil/mini-agent/commit/847adab41a0f7bdfaec1c275bbf7aadfaf0a9854)
+
+**目标**：让 Agent 读取当前工作目录中的文本文件，同时限制工具结果泄露项目外文件、Git 元数据和环境变量。
+
+**主要改动**：
+
+- 新增 `read_file_tool.ts`，只接受相对路径，并使用 `resolve`、`relative` 与 `realpath` 执行两次目录边界校验。
+- 拒绝绝对路径、`..` 越界、符号链接指向目录外、`.env*` 和 `.git/` 路径。
+- 仅允许普通文件，并统一按 UTF-8 返回内容。
+- 在 `tools/index.ts` 中定义 `read_file` 的 name、description 和 Zod schema，加入统一 `tools` 注册表。
+- 新增同目录单元测试，覆盖允许读取、绝对路径、目录外路径与敏感文件拒绝。
+
+**关键代码**：
+
+```ts
+const resolvedPath = await realpath(requestedPath)
+assertSafePath(assertInsideRoot(root, resolvedPath))
+```
+
+第二次校验使用规范化后的真实路径，避免符号链接绕过目录限制。
+
+```ts
+if (segments.some((segment) => segment === '.git' || segment.startsWith('.env'))) {
+  throw new Error('Sensitive files cannot be read.')
+}
+```
+
+文件内容会作为工具结果传给模型，因此环境变量和 Git 元数据被默认拒绝。
+
+**验证**：`pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 3 个测试套件、7 条测试。
+
 ## 当前结构
 
 ```text
@@ -249,6 +280,8 @@ src/
       index.ts        # 工具元信息与统一注册表
       search.ts       # 示例搜索实现
       search.test.ts  # 搜索实现单元测试
+      read_file_tool.ts       # 当前目录内的安全文件读取实现
+      read_file_tool.test.ts  # 文件读取安全边界单元测试
   index.ts      # 基础示例函数
 ```
 
