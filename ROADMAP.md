@@ -32,6 +32,7 @@
 - 补充 `write_file` 目录边界、符号链接和模型写入边界注释。
 - 新增只读命令白名单的 `exec` 工具及安全边界测试。
 - 补充 `exec` shell 隔离、超时、输出限制和参数解析注释。
+- 新增受限 Node 权限模型的 `run_js` 工具及隔离测试。
 
 ## 进行中
 
@@ -58,3 +59,4 @@
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（3 个测试套件、7 条测试）。
 - `write_file` 单元测试与真实 Agent 集成测试通过（4 个测试套件、13 条测试）。
 - `exec` 单元测试与真实 Agent 列出 `src` 集成测试通过（5 个测试套件、18 条测试）。
+- `run_js` 单元测试已覆盖多行异步代码、复杂数据处理、语法错误、运行时异常和特殊字符；`pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（6 个测试套件、27 条测试）。

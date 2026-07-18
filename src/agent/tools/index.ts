@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { execTool } from './exec_tool'
 import { readFileTool } from './read_file_tool'
+import { runJsTool } from './run_js_tool'
 import { search } from './search'
 import { writeFileTool } from './write_file_tool'
 
@@ -75,5 +76,18 @@ const exec = tool(
 	},
 )
 
+const runJs = tool(
+	({ code }: { code: string }) => runJsTool(code),
+	{
+		name: 'run_js',
+		// 代码在 Node 权限模型子进程中执行，仍由 runJsTool 强制超时和输出限制。
+		description:
+			'Run JavaScript in a restricted Node.js process without file system, network, or child process permissions.',
+		schema: z.object({
+			code: z.string().max(20 * 1024).describe('JavaScript source code to execute.'),
+		}),
+	},
+)
+
 // Agent 统一从此注册表加载工具；新增工具时在这里声明元信息并加入数组。
-export const tools = [searchTool, readFile, writeFile, exec]
+export const tools = [searchTool, readFile, writeFile, exec, runJs]
