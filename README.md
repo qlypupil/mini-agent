@@ -43,6 +43,10 @@ Agent 可以读取或写入当前工作目录及其子目录中的 UTF-8 普通�
 
 `web_fetch` 只允许抓取公网 HTTP(S) 地址，拒绝本机和内网地址。请求限制为 10 秒、最多 3 次重定向和 1 MB 响应；为避免超出模型上下文，传给 Agent 的文本最多 8 KB。
 
+## Skills
+
+将 Agent Skills 格式的内置 skill 放入 `src/agent/skills/<skill-name>/SKILL.md`。启动时会发现所有有效 skill 的 `name` 和 `description` 并提供给模型；当任务匹配某个 skill 时，模型调用 `load_skill` 才会读取该 skill 的完整 `SKILL.md`。无效 frontmatter 会被跳过并在终端显示警告。
+
 ## 常用命令
 
 ```bash

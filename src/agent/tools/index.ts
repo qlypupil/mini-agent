@@ -2,6 +2,8 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { currentTimeTool } from './current_time_tool'
 import { execTool } from './exec_tool'
+import { skills } from '../skills'
+import { loadSkillTool } from './load_skill_tool'
 import { readFileTool } from './read_file_tool'
 import { runJsTool } from './run_js_tool'
 import { webFetchTool } from './web_fetch_tool'
@@ -103,6 +105,24 @@ const webFetch = tool(
 	},
 )
 
+const skillNames = skills.map((skill) => skill.name)
+const skillTools = skillNames.length
+	? [
+			tool(
+				({ name }: { name: string }) => loadSkillTool(name),
+				{
+					name: 'load_skill',
+					description: 'Load the complete SKILL.md instructions for one available skill.',
+					schema: z.object({
+						name: z
+							.enum(skillNames as [string, ...string[]])
+							.describe('The exact name of the skill to load.'),
+					}),
+				},
+			),
+		]
+	: []
+
 // Agent 统一从此注册表加载工具；新增工具时在这里声明元信息并加入数组。
 export const tools = [
 	readFile,
@@ -112,4 +132,5 @@ export const tools = [
 	currentTime,
 	webSearchTool,
 	webFetch,
+	...skillTools,
 ]

@@ -3,6 +3,8 @@ import { createAgent } from 'langchain'
 import { MemorySaver } from '@langchain/langgraph'
 import { ChatOpenAI } from '@langchain/openai'
 import { meta } from 'zod/v4/core'
+import { skills } from './skills'
+import { buildSkillsInstruction } from './skills/prompt'
 import { tools } from './tools'
 
 // Moonshot 兼容 OpenAI Chat Completions API，因此复用 ChatOpenAI 客户端。
@@ -16,7 +18,7 @@ if (!MOONSHOT_API_KEY) {
 }
 
 const model = new ChatOpenAI({
-	model: 'moonshot-v1-8k',
+	model: 'kimi-k2.6',
 	apiKey: MOONSHOT_API_KEY,
 	configuration: {
 		baseURL: MOONSHOT_BASE_URL,
@@ -27,12 +29,21 @@ const model = new ChatOpenAI({
 // MemorySaver 按 threadId 保存当前 Node.js 进程内的对话状态。
 const checkpointer = new MemorySaver()
 
+function buildSystemPrompt(): string {
+	const realtimeInstructions =
+		'You are a helpful assistant. For questions about the current date or time, you must use current_time and answer from its result. For other current, recent, or date-sensitive information such as news, weather, prices, or sports, you must use web_search before answering. Do not answer real-time questions from memory. When web_search returns results, answer from those results and do not claim the search failed. Only state that live information could not be retrieved when the tool result explicitly reports an error.'
+
+	const skillsInstruction = buildSkillsInstruction(skills)
+	return skillsInstruction
+		? `${realtimeInstructions}\n\n${skillsInstruction}`
+		: realtimeInstructions
+}
+
 // Agent 负责根据模型输出决定是否调用 tools，并继续生成最终回答。
 const agent = createAgent({
 	model,
 	tools,
-	systemPrompt:
-		'You are a helpful assistant. For questions about the current date or time, you must use current_time and answer from its result. For other current, recent, or date-sensitive information such as news, weather, prices, or sports, you must use web_search before answering. Do not answer real-time questions from memory. When web_search returns results, answer from those results and do not claim the search failed. Only state that live information could not be retrieved when the tool result explicitly reports an error.',
+	systemPrompt: buildSystemPrompt(),
 	checkpointer,
 })
 
