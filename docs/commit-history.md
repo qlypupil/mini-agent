@@ -467,6 +467,81 @@ if (receivedBytes > MAX_AGENT_CONTENT_BYTES) {
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 8 个测试套件、34 条测试。
 - 真实 `miniagent` 调用 `web_fetch` 获取 `https://www.mianshipai.com/`，成功概述“前端面试派”的页面内容。
 
+## 15. [`ffc4664` `feat: 接入 Agent Skills 与按需 load_skill`](https://github.com/qlypupil/mini-agent/commit/ffc46640d7aeebe121d3c21da8b23ff9490827d4)
+
+**目标**：让 Agent 按任务按需加载专业指令，避免把全部 skill 正文塞进 system prompt。
+
+**主要改动**：
+
+- 新增 `src/agent/skills`：启动时递归发现 `SKILL.md`，解析 YAML frontmatter 的 `name` / `description`，跳过无效或重名 skill。
+- 新增 `buildSkillsInstruction`，把可用 skill 目录以 XML 片段写入 system prompt，提示模型在匹配时调用 `load_skill`。
+- 新增 `load_skill` 工具，按名称读取完整 `SKILL.md`；无可用 skill 时不注册该工具。
+- 内置 `planner` 与 `programmer-resume` 两个示例 skill。
+- 默认模型从 `moonshot-v1-8k` 切换为 `kimi-k2.6`，以支持通用 Agent 工具循环。
+- 引入 `yaml` 依赖解析 frontmatter。
+
+**关键代码**：
+
+```ts
+export const skills = discoverSkills()
+
+export function buildSkillsInstruction(skills: Skill[]): string {
+  // ...
+  return `The following skills provide specialized instructions. When a task matches a skill description, call load_skill with its exact name before responding.\n<available_skills>\n${catalog}\n</available_skills>`
+}
+```
+
+启动只披露轻量目录；完整指令由 `load_skill` 按需读入对话，控制上下文体积。
+
+```ts
+const skillNames = skills.map((skill) => skill.name)
+const skillTools = skillNames.length
+  ? [
+      tool(({ name }) => loadSkillTool(name), {
+        name: 'load_skill',
+        schema: z.object({
+          name: z.enum(skillNames as [string, ...string[]]),
+        }),
+      }),
+    ]
+  : []
+```
+
+`z.enum` 限制模型只能加载已发现的 skill 名称，避免随意传参。
+
+**验证**：
+
+- `pnpm test --runInBand`、`pnpm typecheck` 通过；共 11 个测试套件、39 条测试。
+- 默认模型切换为 `kimi-k2.6` 后，CLI 发送 `hi` 并收到正常回复。
+
+## 16. [`83e1334` `build: 打包内置 Skills 并限制 npm 发布内容`](https://github.com/qlypupil/mini-agent/commit/83e133464ea56f25d376692f7eaf11ff8d232f6e)
+
+**目标**：确保 `pnpm build` / 全局安装后的运行时仍能发现内置 `SKILL.md`，且发布包不夹带测试与源码。
+
+**主要改动**：
+
+- 新增 `scripts/clean-dist.mjs`，构建前清理陈旧 `dist/`。
+- 新增 `tsconfig.build.json`，编译时排除 `*.test.ts`。
+- 新增 `scripts/copy-skills.mjs`，仅复制 `SKILL.md` 到 `dist/agent/skills`，并恢复 `dist/agent/cli.js` 可执行权限。
+- `package.json` 的 `files` 限制为 `dist`、`README.md`、`.env.example`。
+
+**关键代码**：
+
+```js
+} else if (entry.isFile() && entry.name === 'SKILL.md') {
+  const destinationPath = join(destinationRoot, relative(sourceRoot, sourcePath))
+  mkdirSync(dirname(destinationPath), { recursive: true })
+  copyFileSync(sourcePath, destinationPath)
+}
+```
+
+只复制 skill 资源文件，避免把 `*.ts` 测试和源码盲拷进发布目录。
+
+**验证**：
+
+- `pnpm build` 后构建产物可发现 `planner`、`programmer-resume` 并注册 `load_skill`。
+- 打包预览仅包含运行时文件与 `SKILL.md`；`npm link` 的 `miniagent` 软链接可执行。
+
 ## 当前结构
 
 ```text
@@ -475,6 +550,11 @@ src/
     agent.ts    # 模型、工具、MemorySaver 与流式调用
     cli.ts      # 终端聊天循环、ESC 取消和可执行入口
     command.ts  # Commander 命令定义
+    skills/
+      index.ts                 # SKILL.md 发现、metadata 解析与索引
+      prompt.ts                # 模型可见的 skills 目录生成
+      planner/SKILL.md         # 计划与待办 skill
+      programmer-resume/SKILL.md # 程序员简历 skill
     tools/
       index.ts        # 工具元信息与统一注册表
       read_file_tool.ts       # 当前目录内的安全文件读取实现
@@ -489,9 +569,15 @@ src/
       web_search_tool.test.ts  # Tavily SDK 调用单元测试
       web_fetch_tool.ts        # 受限公网网页抓取实现
       web_fetch_tool.test.ts   # URL、响应大小与网络失败单元测试
+      load_skill_tool.ts       # 按名称加载完整 SKILL.md
+      load_skill_tool.test.ts  # Skill 加载与终端提示单元测试
       current_time_tool.ts      # 本机日期、时间与时区读取实现
       current_time_tool.test.ts # 本机时间工具单元测试
   index.ts      # 基础示例函数
+scripts/
+  clean-dist.mjs   # 清理生成的 dist 目录
+  copy-skills.mjs  # 将内置 SKILL.md 复制到 dist
+tsconfig.build.json # 仅编译运行时源码的构建配置
 ```
 
 ## 后续边界
@@ -499,4 +585,6 @@ src/
 - `MemorySaver` 仅提供进程内短期记忆；需要跨重启保存时，应替换为数据库 checkpointer。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
+- Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
+- `load_skill` 返回完整 `SKILL.md`（含 frontmatter），大文件可能占用较多上下文。
 - 流式事件处理仍保留部分 `any`，后续可基于 LangChain 事件类型进一步收紧。
