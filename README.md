@@ -1,6 +1,6 @@
-# mini-agent
+# termclaw
 
-基于 TypeScript 的 Node.js 项目骨架，使用 pnpm 管理依赖，并通过 Jest 执行单元测试。
+基于 TypeScript 的 Node.js 终端 Agent，使用 pnpm 管理依赖，并通过 Jest 执行单元测试。
 
 ## 环境要求
 
@@ -37,6 +37,8 @@ Agent 可以读取或写入当前工作目录及其子目录中的 UTF-8 普通�
 
 `run_js` 在 Node 权限模型子进程中执行 JavaScript。子进程不继承项目环境变量，且默认没有文件系统、网络、子进程或 worker 权限；单次执行限制 5 秒、代码 20 KB、输出 64 KB。
 
+`run_py` 使用本机 `python3` 执行 Python 代码。子进程不继承项目环境变量；若未安装 `python3`，会返回明确错误供模型提示用户。单次执行限制 5 秒、代码 20 KB、输出 64 KB。
+
 `web_search` 使用 Tavily 搜索当前网页信息，每次最多返回 3 条通用搜索结果，并附带 Tavily 生成的答案。查询内容会发送给 Tavily API，并消耗对应的 API 配额。
 
 `current_time` 从本机读取当前日期、时间和时区，专门处理“今天”和“现在”问题。新闻、天气、价格和体育赛事等实时信息由 `web_search` 检索，Agent 会基于成功返回的结果作答。CLI 会显示工具的开始、完成或失败状态，便于区分模型未检索与检索失败。
@@ -47,7 +49,7 @@ Agent 可以读取或写入当前工作目录及其子目录中的 UTF-8 普通�
 
 将 Agent Skills 格式的内置 skill 放入 `src/agent/skills/<skill-name>/SKILL.md`。启动时会发现所有有效 skill 的 `name` 和 `description` 并提供给模型；当任务匹配某个 skill 时，模型调用 `load_skill` 才会读取该 skill 的完整 `SKILL.md`。无效 frontmatter 会被跳过并在终端显示警告。
 
-`pnpm build` 会先清理 `dist/`，仅编译运行时源码，再将所有 `SKILL.md` 复制到 `dist/agent/skills`，并恢复 CLI 入口的可执行权限。发布包只包含运行时构建产物和必要文档，因此全局安装后 `miniagent` 不依赖用户当前目录下的 `src/`。
+`pnpm build` 会先清理 `dist/`，仅编译运行时源码，再将 skill 资源复制到 `dist/agent/skills`，并恢复 CLI 入口的可执行权限。发布包只包含运行时构建产物和必要文档，因此全局安装后 `termclaw` 不依赖用户当前目录下的 `src/`。
 
 ## 常用命令
 
@@ -75,18 +77,26 @@ pnpm start
 
 ## 全局命令
 
-构建后通过 npm 链接将当前项目注册为本机 `miniagent` 命令：
+构建后通过 npm 链接将当前项目注册为本机 `termclaw` 命令：
 
 ```bash
 pnpm build
 npm link
 
-miniagent
-miniagent --help
-miniagent --version
+termclaw
+termclaw --help
+termclaw --version
 ```
 
-`miniagent` 的版本与描述直接读取 `package.json`。
+启动后会先显示 figlet 品牌标题、`package.json` 信息框（版本、描述、作者、文档）以及 ESC / exit 使用说明。
+
+也可发布后全局安装：
+
+```bash
+npm install -g termclaw
+```
+
+`termclaw` 的版本与描述直接读取 `package.json`。
 
 ## 测试约定
 

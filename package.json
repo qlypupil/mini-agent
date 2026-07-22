@@ -1,10 +1,10 @@
 {
-	"name": "mini-agent",
+	"name": "termclaw",
 	"version": "1.0.0",
 	"description": "A personal AI Agent like OpenClaw, including tools, skills, memory, hook, sub-agent, MCP sever, etc. Run in the terminal.",
 	"main": "dist/index.js",
 	"bin": {
-		"miniagent": "dist/agent/cli.js"
+		"termclaw": "dist/agent/cli.js"
 	},
 	"files": [
 		"dist",
@@ -24,7 +24,8 @@
 		"url": "git+https://github.com/qlypupil/mini-agent.git"
 	},
 	"keywords": [],
-	"author": "",
+	"author": "qlypupil",
+	"docs": "https://github.com/qlypupil/mini-agent#readme",
 	"license": "ISC",
 	"type": "commonjs",
 	"bugs": {
@@ -32,6 +33,7 @@
 	},
 	"homepage": "https://github.com/qlypupil/mini-agent#readme",
 	"devDependencies": {
+		"@types/figlet": "^1.7.0",
 		"@types/jest": "^30.0.0",
 		"jest": "^30.0.5",
 		"ts-jest": "^29.4.1",
@@ -44,8 +46,11 @@
 		"@langchain/langgraph": "^1.4.8",
 		"@langchain/openai": "^1.5.5",
 		"@langchain/tavily": "^1.2.0",
+		"boxen": "^5.1.2",
+		"chalk": "^4.1.2",
 		"commander": "^15.0.0",
 		"dotenv": "^17.4.2",
+		"figlet": "^1.11.3",
 		"langchain": "^1.5.3",
 		"yaml": "^2.9.0",
 		"zod": "^4.4.3"

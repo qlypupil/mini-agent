@@ -17,7 +17,7 @@
 - 配置构建后的 Agent CLI 启动脚本。
 - 支持通过环境变量配置 Moonshot API Base URL。
 - 接入 LangGraph MemorySaver，实现同一进程内的会话记忆。
-- 接入 Commander.js，并注册 `miniagent` 全局 CLI 命令。
+- 接入 Commander.js，并注册 `termclaw` 全局 CLI 命令。
 - 将 Commander 命令定义抽离至 `src/agent/command.ts`。
 - 抽取 CLI readline 接口创建函数。
 - 支持在 Agent 流式回复期间通过 ESC 取消请求。
@@ -40,6 +40,11 @@
 - 接入 Agent Skills 发现、模型目录披露与按需 `load_skill` 激活机制。
 - 默认模型切换为通用 Agent 模型 `kimi-k2.6`。
 - 构建时复制内置 `SKILL.md` 到 `dist`，并限制 npm 发布包内容，支持全局安装运行。
+- 将 skills / tools 注册入口提升为 `src/agent/skills.ts` 与 `src/agent/tools.ts`。
+- 新增本机 `python3` 执行的 `run_py` 工具及单元测试。
+- 将 npm 包名与全局 CLI 命令重命名为 `termclaw`，避免与已占用的 `miniagent` 冲突。
+- 使用 chalk 为 CLI 提示符、工具状态与 skill 诊断日志上色，提升终端可读性。
+- 启动时用 figlet / boxen 展示包名、版本、描述、作者、文档与快捷键说明。
 
 ## 进行中
 
@@ -59,7 +64,7 @@
 - 构建产物已完成 Moonshot 集成测试：`hi` 与 `who are you` 均收到正常流式回复。
 - `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过。
 - MemorySaver 集成测试通过：同一线程内保存并正确取回用户名 `Pupil`。
-- `miniagent --help`、`miniagent --version` 与交互启动验证通过。
+- `termclaw --help`、`termclaw --version` 与交互启动验证通过。
 - ESC 集成测试通过：流式响应在 3 秒后被取消，CLI 恢复到下一轮输入。
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过（2 个测试套件、3 条测试）。
 - `pnpm dev` 中文天气输入集成测试通过，用户输入仅回显一次。
@@ -73,4 +78,7 @@
 - `web_fetch` 单元测试、类型检查与构建通过（8 个测试套件、34 条测试）；真实 Agent 抓取并概述 `https://www.mianshipai.com/` 成功。
 - Skills 发现、目录生成和 `load_skill` 单元测试通过（11 个测试套件、39 条测试）；默认模型切换为 `kimi-k2.6` 后 CLI 发送 `hi` 并收到正常回复。
 - Skills 构建资源复制、运行时专用构建配置与 npm 打包范围调整完成；构建产物可在外部工作目录发现内置 skills，打包预览仅包含运行时文件与 `SKILL.md`。
-- 构建后恢复 `dist/agent/cli.js` 可执行权限，保证 `npm link` 的 `miniagent` 软链接可运行。
+- 构建后恢复 `dist/agent/cli.js` 可执行权限，保证 `npm link` 的 `termclaw` 软链接可运行。
+- skills / tools 入口提升为 `skills.ts` / `tools.ts` 后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（11 个测试套件、39 条测试）；构建产物仍发现内置 skills 并注册 `load_skill`。
+- `run_py` 单元测试、类型检查与构建通过（12 个测试套件、48 条测试）；真实 `termclaw` 调用 `run_py` 执行 `print(2 + 3)`，返回 `5`。
+- 包名与 CLI 重命名为 `termclaw` 后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过；`termclaw --help` / `--version` 正常。

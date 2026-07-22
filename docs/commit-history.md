@@ -141,10 +141,10 @@ checkpointer 按 `thread_id` 保存图状态，因此同一线程的下一次调
 **主要改动**：
 
 - 新增 `commander` 依赖。
-- 新增 `src/agent/command.ts`，定义 `miniagent` 的名称、描述、版本和默认 action。
+- 新增 `src/agent/command.ts`，定义 `termclaw` 的名称、描述、版本和默认 action。
 - `src/agent/cli.ts` 保留 shebang、readline 和聊天循环，并调用 `createProgram(main)`。
-- `package.json` 增加 `bin.miniagent`，指向 `dist/agent/cli.js`。
-- 使用 `npm link` 注册本机 `miniagent` 命令。
+- `package.json` 增加 `bin.termclaw`，指向 `dist/agent/cli.js`。
+- 使用 `npm link` 注册本机 `termclaw` 命令。
 - 抽取 `createInterface()`，集中创建 readline 接口。
 
 **关键代码**：
@@ -152,7 +152,7 @@ checkpointer 按 `thread_id` 保存图状态，因此同一线程的下一次调
 ```ts
 export function createProgram(runChat: () => Promise<void>): Command {
   return new Command()
-    .name('miniagent')
+    .name('termclaw')
     .description(packageMetadata.description)
     .version(packageMetadata.version)
     .action(runChat)
@@ -165,7 +165,7 @@ void createProgram(main).parseAsync(process.argv)
 
 `command.ts` 负责命令定义；`cli.ts` 仍是 `bin` 和 `pnpm dev` 的实际入口。
 
-**验证**：`miniagent --help`、`miniagent --version` 和启动后输入 `exit` 均通过。
+**验证**：`termclaw --help`、`termclaw --version` 和启动后输入 `exit` 均通过。
 
 ## 7. [`6031d91` `feat: 支持 ESC 取消流式响应`](https://github.com/qlypupil/mini-agent/commit/6031d910061792fbbfc16d17da4e385db3c6d652)
 
@@ -299,7 +299,7 @@ await writeFile(writablePath, content, 'utf8')
 **验证**：
 
 - `pnpm test --runInBand`、`pnpm typecheck`、`pnpm build` 通过；共 4 个测试套件、13 条测试。
-- 真实 `miniagent` 集成测试中，模型调用 `write_file` 创建测试文件，文件内容精确匹配后已清理。
+- 真实 `termclaw` 集成测试中，模型调用 `write_file` 创建测试文件，文件内容精确匹配后已清理。
 
 ## 11. [`fa286a5` `feat: 添加安全命令执行工具`](https://github.com/qlypupil/mini-agent/commit/fa286a5002f4536b3fe429428efd756c818e2ae4)
 
@@ -337,7 +337,7 @@ if (outputBytes > MAX_OUTPUT_BYTES) {
 **验证**：
 
 - `pnpm test --runInBand`、`pnpm typecheck`、`pnpm build` 通过；共 5 个测试套件、18 条测试。
-- 真实 `miniagent` 集成测试中，模型调用 `exec` 的 `ls src`，正确列出 `agent`、`index.test.ts` 与 `index.ts`。
+- 真实 `termclaw` 集成测试中，模型调用 `exec` 的 `ls src`，正确列出 `agent`、`index.test.ts` 与 `index.ts`。
 
 ## 12. [`48d945f` `feat: 添加受限 JavaScript 执行工具`](https://github.com/qlypupil/mini-agent/commit/48d945f87c72518f1b7b56b04df5d62aa38f3007)
 
@@ -380,7 +380,7 @@ if (outputBytes > MAX_OUTPUT_BYTES) {
 **验证**：
 
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 6 个测试套件、27 条测试。
-- 真实 `miniagent` 集成测试中，模型调用 `run_js` 执行 `console.log(2 + 3)`，正确返回 `5`。
+- 真实 `termclaw` 集成测试中，模型调用 `run_js` 执行 `console.log(2 + 3)`，正确返回 `5`。
 
 ## 13. [`b5ff031` `feat: 接入实时搜索与本机时间工具`](https://github.com/qlypupil/mini-agent/commit/b5ff031b75ac19fab8845fb92bc233c1a79da889)
 
@@ -465,7 +465,7 @@ if (receivedBytes > MAX_AGENT_CONTENT_BYTES) {
 **验证**：
 
 - `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 8 个测试套件、34 条测试。
-- 真实 `miniagent` 调用 `web_fetch` 获取 `https://www.mianshipai.com/`，成功概述“前端面试派”的页面内容。
+- 真实 `termclaw` 调用 `web_fetch` 获取 `https://www.mianshipai.com/`，成功概述“前端面试派”的页面内容。
 
 ## 15. [`ffc4664` `feat: 接入 Agent Skills 与按需 load_skill`](https://github.com/qlypupil/mini-agent/commit/ffc46640d7aeebe121d3c21da8b23ff9490827d4)
 
@@ -540,7 +540,7 @@ const skillTools = skillNames.length
 **验证**：
 
 - `pnpm build` 后构建产物可发现 `planner`、`programmer-resume` 并注册 `load_skill`。
-- 打包预览仅包含运行时文件与 `SKILL.md`；`npm link` 的 `miniagent` 软链接可执行。
+- 打包预览仅包含运行时文件与 `SKILL.md`；`npm link` 的 `termclaw` 软链接可执行。
 
 ## 当前结构
 

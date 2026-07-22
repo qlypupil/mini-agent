@@ -9,7 +9,7 @@ describe('writeFileTool', () => {
 
 	beforeEach(async () => {
 		insideDirectory = await mkdtemp(join(process.cwd(), '.write-file-tool-'))
-		outsideDirectory = await mkdtemp(join(tmpdir(), 'mini-agent-write-file-'))
+		outsideDirectory = await mkdtemp(join(tmpdir(), 'termclaw-write-file-'))
 	})
 
 	afterEach(async () => {

@@ -4,7 +4,7 @@ import { readFileTool } from './read_file_tool'
 describe('readFileTool', () => {
 	it('reads a file inside the current directory', async () => {
 		await expect(readFileTool('package.json')).resolves.toContain(
-			'"name": "mini-agent"',
+			'"name": "termclaw"',
 		)
 	})
 
