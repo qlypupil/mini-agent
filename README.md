@@ -47,6 +47,8 @@ Agent 可以读取或写入当前工作目录及其子目录中的 UTF-8 普通�
 
 将 Agent Skills 格式的内置 skill 放入 `src/agent/skills/<skill-name>/SKILL.md`。启动时会发现所有有效 skill 的 `name` 和 `description` 并提供给模型；当任务匹配某个 skill 时，模型调用 `load_skill` 才会读取该 skill 的完整 `SKILL.md`。无效 frontmatter 会被跳过并在终端显示警告。
 
+`pnpm build` 会先清理 `dist/`，仅编译运行时源码，再将所有 `SKILL.md` 复制到 `dist/agent/skills`，并恢复 CLI 入口的可执行权限。发布包只包含运行时构建产物和必要文档，因此全局安装后 `miniagent` 不依赖用户当前目录下的 `src/`。
+
 ## 常用命令
 
 ```bash

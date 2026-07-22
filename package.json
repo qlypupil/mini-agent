@@ -6,8 +6,13 @@
 	"bin": {
 		"miniagent": "dist/agent/cli.js"
 	},
+	"files": [
+		"dist",
+		"README.md",
+		".env.example"
+	],
 	"scripts": {
-		"build": "tsc",
+		"build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-skills.mjs",
 		"dev": "ts-node src/agent/cli.ts",
 		"start": "node dist/agent/cli.js",
 		"typecheck": "tsc --noEmit",

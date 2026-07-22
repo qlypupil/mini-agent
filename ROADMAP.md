@@ -39,6 +39,7 @@
 - 新增受限公网访问的 `web_fetch` 工具及 URL、响应大小与网络失败测试。
 - 接入 Agent Skills 发现、模型目录披露与按需 `load_skill` 激活机制。
 - 默认模型切换为通用 Agent 模型 `kimi-k2.6`。
+- 构建时复制内置 `SKILL.md` 到 `dist`，并限制 npm 发布包内容，支持全局安装运行。
 
 ## 进行中
 
@@ -71,3 +72,5 @@
 - `current_time` 单元测试、类型检查与构建通过（7 个测试套件、28 条测试）；真实 CLI 验证返回本机日期 `Saturday, July 18, 2026`。
 - `web_fetch` 单元测试、类型检查与构建通过（8 个测试套件、34 条测试）；真实 Agent 抓取并概述 `https://www.mianshipai.com/` 成功。
 - Skills 发现、目录生成和 `load_skill` 单元测试通过（11 个测试套件、39 条测试）；默认模型切换为 `kimi-k2.6` 后 CLI 发送 `hi` 并收到正常回复。
+- Skills 构建资源复制、运行时专用构建配置与 npm 打包范围调整完成；构建产物可在外部工作目录发现内置 skills，打包预览仅包含运行时文件与 `SKILL.md`。
+- 构建后恢复 `dist/agent/cli.js` 可执行权限，保证 `npm link` 的 `miniagent` 软链接可运行。
