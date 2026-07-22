@@ -1,11 +1,11 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { discoverSkills } from './index'
+import { discoverSkills } from './skills'
 
 describe('discoverSkills', () => {
 	it('discovers valid nested skills and skips malformed metadata', () => {
-		const root = mkdtempSync(join(tmpdir(), 'miniagent-skills-'))
+		const root = mkdtempSync(join(tmpdir(), 'termclaw-skills-'))
 		const validDirectory = join(root, 'nested', 'valid-skill')
 		const invalidDirectory = join(root, 'invalid-skill')
 		mkdirSync(validDirectory, { recursive: true })

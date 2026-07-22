@@ -1,4 +1,4 @@
-import type { Skill } from './index'
+import type { Skill } from '../skills'
 
 function escapeXml(value: string): string {
 	return value.replace(/[<>&'"]/g, (character) => {

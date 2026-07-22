@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import chalk from 'chalk'
 import { parseDocument } from 'yaml'
 
 export type Skill = {
@@ -8,8 +9,8 @@ export type Skill = {
 	path: string
 }
 
-// ts-node 开发与 dist 运行时的 __dirname 都指向包含内置 SKILL.md 的模块目录。
-const SKILLS_DIRECTORY = __dirname
+// ts-node 开发与 dist 运行时都从 agent 目录旁的 skills/ 扫描内置 SKILL.md。
+const SKILLS_DIRECTORY = join(__dirname, 'skills')
 
 function findSkillFiles(directory: string): string[] {
 	if (!existsSync(directory)) {
@@ -51,7 +52,9 @@ function parseSkill(skillPath: string): Skill | undefined {
 
 		return { name, description, path: skillPath }
 	} catch (error) {
-		console.warn(`[Skills] Skipped ${skillPath}: ${(error as Error).message}`)
+		console.warn(
+			chalk.yellow(`[Skills] Skipped ${skillPath}: ${(error as Error).message}`),
+		)
 		return undefined
 	}
 }
@@ -64,12 +67,18 @@ export function discoverSkills(directory = SKILLS_DIRECTORY): Skill[] {
 		if (!skill) continue
 
 		if (discovered.has(skill.name)) {
-			console.warn(`[Skills] Skipped duplicate skill: ${skill.name} (${skillPath})`)
+			console.warn(
+				chalk.yellow(
+					`[Skills] Skipped duplicate skill: ${skill.name} (${skillPath})`,
+				),
+			)
 			continue
 		}
 
 		if (basename(dirname(skillPath)) !== skill.name) {
-			console.warn(`[Skills] Skill name does not match directory: ${skillPath}`)
+			console.warn(
+				chalk.yellow(`[Skills] Skill name does not match directory: ${skillPath}`),
+			)
 		}
 
 		discovered.set(skill.name, skill)

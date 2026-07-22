@@ -1,14 +1,15 @@
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { currentTimeTool } from './current_time_tool'
-import { execTool } from './exec_tool'
-import { skills } from '../skills'
-import { loadSkillTool } from './load_skill_tool'
-import { readFileTool } from './read_file_tool'
-import { runJsTool } from './run_js_tool'
-import { webFetchTool } from './web_fetch_tool'
-import { webSearchTool } from './web_search_tool'
-import { writeFileTool } from './write_file_tool'
+import { skills } from './skills'
+import { currentTimeTool } from './tools/current_time_tool'
+import { execTool } from './tools/exec_tool'
+import { loadSkillTool } from './tools/load_skill_tool'
+import { readFileTool } from './tools/read_file_tool'
+import { runJsTool } from './tools/run_js_tool'
+import { runPyTool } from './tools/run_py_tool'
+import { webFetchTool } from './tools/web_fetch_tool'
+import { webSearchTool } from './tools/web_search_tool'
+import { writeFileTool } from './tools/write_file_tool'
 
 const readFile = tool(
 	({ path }: { path: string }) => readFileTool(path),
@@ -82,6 +83,19 @@ const runJs = tool(
 	},
 )
 
+const runPy = tool(
+	({ code }: { code: string }) => runPyTool(code),
+	{
+		name: 'run_py',
+		// 使用本机 python3 执行；未安装时返回明确错误，供模型告知用户。
+		description:
+			'Run Python code with the local python3 interpreter. Returns stdout/stderr or an error if Python 3 is unavailable. Does not inherit project environment variables. Single runs are limited to 5 seconds, 20 KB of source, and 64 KB of output.',
+		schema: z.object({
+			code: z.string().max(20 * 1024).describe('Python source code to execute.'),
+		}),
+	},
+)
+
 const currentTime = tool(
 	() => currentTimeTool(),
 	{
@@ -129,6 +143,7 @@ export const tools = [
 	writeFile,
 	exec,
 	runJs,
+	runPy,
 	currentTime,
 	webSearchTool,
 	webFetch,
