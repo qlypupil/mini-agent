@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 
 import * as readline from 'readline'
+import chalk from 'chalk'
 import { runAgentStream } from './agent'
+import { printStartupBanner } from './banner'
 import { createProgram } from './command'
 
 // 固定 ID 让 MemorySaver 在本次 CLI 进程中续接每一轮消息。
 // 退出 CLI 后内存清空，下一次启动会开始新的会话。
 const THREAD_ID = 'user-session-1'
+
+const youLabel = () => chalk.green.bold('You: ')
+const aiLabel = () => chalk.blue.bold('AI: ')
 
 // readline 将终端标准输入和输出封装为可交互的行级读写接口。
 function createInterface(): readline.Interface {
@@ -55,8 +60,8 @@ function prompt(question: string): Promise<string> {
 }
 
 async function chat(userInput: string): Promise<void> {
-	// write 不自动换行，使每个流式 token 能连续显示。
-	process.stdout.write('\nAI: ')
+	// write 不自动换行，使每个流式 token 能连续显示；AI 正文保持默认颜色。
+	process.stdout.write(`\n${aiLabel()}`)
 
 	// 每轮请求独享控制器，避免 ESC 取消到下一轮对话。
 	const controller = new AbortController()
@@ -72,23 +77,31 @@ async function chat(userInput: string): Promise<void> {
 			controller.signal,
 			(event) => {
 				if (event.status === 'started') {
-					process.stdout.write(`\n[Tool] ${event.name} started.\n`)
+					process.stdout.write(
+						`\n${chalk.yellow.dim(`[Tool] ${event.name} started.`)}\n`,
+					)
 					return
 				}
 
 				if (event.status === 'failed') {
-					const detail = event.error ? `: ${event.error.slice(0, 200)}` : ''
-					process.stdout.write(`\n[Tool] ${event.name} failed${detail}\n\nAI: `)
+					const detail = event.error
+						? chalk.red.dim(`: ${event.error.slice(0, 200)}`)
+						: ''
+					process.stdout.write(
+						`\n${chalk.red(`[Tool] ${event.name} failed`)}${detail}\n\n${aiLabel()}`,
+					)
 					return
 				}
 
-				process.stdout.write(`\n[Tool] ${event.name} completed.\n\nAI: `)
+				process.stdout.write(
+					`\n${chalk.green.dim(`[Tool] ${event.name} completed.`)}\n\n${aiLabel()}`,
+				)
 			},
 		)
 		process.stdout.write('\n\n')
 	} catch (error) {
 		if (controller.signal.aborted) {
-			process.stdout.write('\n\n已取消当前请求。\n\n')
+			process.stdout.write(`\n\n${chalk.yellow('已取消当前请求。')}\n\n`)
 			return
 		}
 		throw error
@@ -106,16 +119,16 @@ async function main(): Promise<void> {
 		stopKeyboardControls()
 	})
 
-	console.log('=== Agent 聊天控制台 (输入 "exit" 退出) ===\n')
+	printStartupBanner()
 
 	while (!inputClosed) {
 		// prompt 会等待用户提交一整行输入，不会阻塞 Node.js 的事件循环。
-		const userInput = await prompt('You: ')
+		const userInput = await prompt(youLabel())
 		if (inputClosed) break
 
 		if (!userInput.trim()) continue
 		if (userInput.toLowerCase() === 'exit') {
-			console.log('再见！')
+			console.log(chalk.cyan.dim('再见！'))
 			// 关闭底层标准输入监听，允许 Node.js 正常退出。
 			rl.close()
 			break
@@ -124,7 +137,10 @@ async function main(): Promise<void> {
 		try {
 			await chat(userInput)
 		} catch (err) {
-			console.error('请求出错:', (err as Error).message)
+			console.error(
+				chalk.red('请求出错:'),
+				chalk.red.dim((err as Error).message),
+			)
 		}
 	}
 }

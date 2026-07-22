@@ -12,7 +12,7 @@ describe('loadSkillTool', () => {
 
 		expect(content).toContain('name: planner')
 		expect(content).toContain('# Planner')
-		expect(log).toHaveBeenCalledWith('[Skill] planner loaded.')
+		expect(log).toHaveBeenCalledWith(expect.stringContaining('[Skill] planner loaded.'))
 	})
 
 	it('rejects unknown skills', () => {
