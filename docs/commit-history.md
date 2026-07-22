@@ -542,21 +542,69 @@ const skillTools = skillNames.length
 - `pnpm build` 后构建产物可发现 `planner`、`programmer-resume` 并注册 `load_skill`。
 - 打包预览仅包含运行时文件与 `SKILL.md`；`npm link` 的 `termclaw` 软链接可执行。
 
+## 17. [`af2db79` `feat: 重构 skills/tools 入口并添加 run_py`](https://github.com/qlypupil/mini-agent/commit/af2db794532c8a38d861ecca080dc19157b42f5c)
+
+**目标**：理顺模块入口，并让 Agent 能用本机 `python3` 执行 Python 代码。
+
+**主要改动**：
+
+- 将 `skills/index.ts`、`tools/index.ts` 提升为 `src/agent/skills.ts`、`src/agent/tools.ts`。
+- 新增 `run_py_tool.ts`：以 `python3 -I -c` 执行代码；未安装时返回明确错误；限制超时、源码与输出大小，且不继承项目环境变量。
+- 补充同目录单元测试，覆盖输出、错误、环境隔离与缺解释器场景。
+
+**验证**：`pnpm test --runInBand`、`pnpm typecheck` 通过；真实 CLI 调用 `run_py` 执行 `print(2 + 3)` 返回 `5`。
+
+## 18. [`0ba7941` `feat: 内置 skill-creator 并复制完整 skill 资源`](https://github.com/qlypupil/mini-agent/commit/0ba7941f42e8b0f9c0fd0d282128d8b536395322)
+
+**目标**：内置 Anthropic `skill-creator`，并保证构建后脚本与资源可用。
+
+**主要改动**：
+
+- 添加 `src/agent/skills/skill-creator/`（含 `SKILL.md`、scripts、eval-viewer 等）。
+- 更新 `scripts/copy-skills.mjs`：复制 skill 目录下非 `.ts` 资源，不再只拷 `SKILL.md`。
+
+**验证**：构建产物可发现 `skill-creator`，且 `dist/agent/skills/skill-creator/scripts/` 存在。
+
+## 19. [`0924ab6` `chore: 将包名与 CLI 重命名为 termclaw`](https://github.com/qlypupil/mini-agent/commit/0924ab63521808faceb364571bd755b87cb3fabf)
+
+**目标**：避免与 npm 上已占用的 `miniagent` 冲突。
+
+**主要改动**：
+
+- `package.json` 的 `name` / `bin` 改为 `termclaw`，补充 `author` 与 `docs`。
+- 同步 Commander 命令名、README、ROADMAP、commit-history 与相关测试断言。
+
+**验证**：`termclaw --help` / `--version` 正常。
+
+## 20. [`71304a8` `feat: 优化终端配色并添加启动欢迎屏`](https://github.com/qlypupil/mini-agent/commit/71304a8066a6fab5fe692c5f659aaadf5b271b5c)
+
+**目标**：提升终端可读性，并在启动时展示醒目的产品信息。
+
+**主要改动**：
+
+- 使用 chalk 区分 `You` / `AI`、工具状态、取消与错误输出。
+- 新增 `banner.ts`：figlet 渲染包名，boxen 展示 version / description / author / docs，并打印 ESC / exit 说明。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 通过；启动可见品牌标题与信息框。
+
 ## 当前结构
 
 ```text
 src/
   agent/
     agent.ts    # 模型、工具、MemorySaver 与流式调用
+    banner.ts   # 启动 figlet 标题与 boxen 信息框
     cli.ts      # 终端聊天循环、ESC 取消和可执行入口
     command.ts  # Commander 命令定义
+    skills.ts   # SKILL.md 发现、metadata 解析与索引
+    skills.test.ts
+    tools.ts    # 工具元信息与统一注册表
     skills/
-      index.ts                 # SKILL.md 发现、metadata 解析与索引
       prompt.ts                # 模型可见的 skills 目录生成
       planner/SKILL.md         # 计划与待办 skill
       programmer-resume/SKILL.md # 程序员简历 skill
+      skill-creator/           # Anthropic skill-creator 及脚本资源
     tools/
-      index.ts        # 工具元信息与统一注册表
       read_file_tool.ts       # 当前目录内的安全文件读取实现
       read_file_tool.test.ts  # 文件读取安全边界单元测试
       write_file_tool.ts       # 当前目录内的安全文件写入实现
@@ -565,6 +613,8 @@ src/
       exec_tool.test.ts        # 命令白名单与路径边界单元测试
       run_js_tool.ts           # Node 权限模型下的受限 JavaScript 执行实现
       run_js_tool.test.ts      # JavaScript 执行与隔离边界单元测试
+      run_py_tool.ts           # 本机 python3 执行实现
+      run_py_tool.test.ts      # Python 执行与错误边界单元测试
       web_search_tool.ts       # Tavily 通用网页搜索实现
       web_search_tool.test.ts  # Tavily SDK 调用单元测试
       web_fetch_tool.ts        # 受限公网网页抓取实现
@@ -576,7 +626,7 @@ src/
   index.ts      # 基础示例函数
 scripts/
   clean-dist.mjs   # 清理生成的 dist 目录
-  copy-skills.mjs  # 将内置 SKILL.md 复制到 dist
+  copy-skills.mjs  # 将内置 skill 资源复制到 dist
 tsconfig.build.json # 仅编译运行时源码的构建配置
 ```
 
@@ -587,4 +637,5 @@ tsconfig.build.json # 仅编译运行时源码的构建配置
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
 - `load_skill` 返回完整 `SKILL.md`（含 frontmatter），大文件可能占用较多上下文。
+- `run_py` 依赖本机 `python3`，且不像 `run_js` 具备 Node 权限模型级别的文件系统隔离。
 - 流式事件处理仍保留部分 `any`，后续可基于 LangChain 事件类型进一步收紧。
