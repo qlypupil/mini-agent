@@ -6,6 +6,7 @@ export interface InteractiveCommand {
 
 export interface InteractiveCommandContext {
 	startNewSession: () => void
+	listSessions: () => Promise<string>
 	write: (message: string) => void
 }
 
@@ -62,6 +63,18 @@ const commands: Record<string, InteractiveCommandHandler> = {
 
 		context.startNewSession()
 		context.write('已开启新会话。')
+	},
+	sessions: async (command, context) => {
+		if (command.args.length > 0) {
+			context.write('用法: /sessions')
+			return
+		}
+
+		try {
+			context.write(await context.listSessions())
+		} catch (error) {
+			context.write(`读取会话失败: ${(error as Error).message}`)
+		}
 	},
 }
 

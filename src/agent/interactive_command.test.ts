@@ -25,6 +25,7 @@ describe('handleInteractiveCommand', () => {
 
 		const handled = await handleInteractiveCommand('/new', {
 			startNewSession,
+			listSessions: jest.fn(),
 			write,
 		})
 
@@ -36,6 +37,7 @@ describe('handleInteractiveCommand', () => {
 	it('keeps regular chat input available for the Agent', async () => {
 		const handled = await handleInteractiveCommand('who are you', {
 			startNewSession: jest.fn(),
+			listSessions: jest.fn(),
 			write: jest.fn(),
 		})
 
@@ -44,14 +46,29 @@ describe('handleInteractiveCommand', () => {
 
 	it('reports malformed and unknown commands locally', async () => {
 		const write = jest.fn()
-		const context = { startNewSession: jest.fn(), write }
+		const context = { startNewSession: jest.fn(), listSessions: jest.fn(), write }
 
 		await handleInteractiveCommand('/new unexpected', context)
-		await handleInteractiveCommand('/sessions', context)
+		await handleInteractiveCommand('/unknown', context)
 
 		expect(context.startNewSession).not.toHaveBeenCalled()
 		expect(write).toHaveBeenNthCalledWith(1, '用法: /new')
-		expect(write).toHaveBeenNthCalledWith(2, '未知命令: /sessions')
+		expect(write).toHaveBeenNthCalledWith(2, '未知命令: /unknown')
+	})
+
+	it('lists sessions locally without forwarding the command to the Agent', async () => {
+		const listSessions = jest.fn().mockResolvedValue('会话列表')
+		const write = jest.fn()
+
+		const handled = await handleInteractiveCommand('/sessions', {
+			startNewSession: jest.fn(),
+			listSessions,
+			write,
+		})
+
+		expect(handled).toBe(true)
+		expect(listSessions).toHaveBeenCalledTimes(1)
+		expect(write).toHaveBeenCalledWith('会话列表')
 	})
 
 	it('allows future commands to define their own argument syntax', async () => {
@@ -64,6 +81,7 @@ describe('handleInteractiveCommand', () => {
 
 		await commandHandler('/skill planner daily plan', {
 			startNewSession: jest.fn(),
+			listSessions: jest.fn(),
 			write,
 		})
 

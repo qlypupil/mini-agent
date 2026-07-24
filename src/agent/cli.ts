@@ -7,6 +7,7 @@ import { Command } from 'commander'
 import { runAgentStream } from './agent'
 import { printStartupBanner } from './banner'
 import { handleInteractiveCommand } from './interactive_command'
+import { formatSessionsTable, listRecentChatSessions } from './sessions'
 
 // CLI 的版本与描述始终跟随 package.json，避免在命令代码中重复维护元信息。
 const packageMetadata = require('../../package.json') as {
@@ -145,6 +146,7 @@ async function main(): Promise<void> {
 			startNewSession: () => {
 				threadId = randomUUID()
 			},
+			listSessions: async () => formatSessionsTable(await listRecentChatSessions()),
 			write: (message) => {
 				console.log(chalk.cyan(message))
 			},
