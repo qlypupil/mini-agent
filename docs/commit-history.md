@@ -651,6 +651,34 @@ if (commandHandled) continue
 - `pnpm typecheck`、`pnpm build` 通过；构建产物 `termclaw --help` 正常。
 - 构建产物输入 `/new` 显示“已开启新会话。”，未调用 AI。
 
+## 23. [`d20145e` `feat: 添加会话列表命令`](https://github.com/qlypupil/mini-agent/commit/d20145e)
+
+**目标**：让用户在终端内查看可恢复的近期会话，同时确保查询不发起模型请求。
+
+**主要改动**：
+
+- 新增 `sessions.ts`：从当前目录 `.data/checkpointer.db` 只读查询会话。
+- 新增 `/sessions`：最多输出 20 个会话，包含完整 `thread_id`、最后一条用户输入和相对时间。
+- 查询时按 `thread_id` 选取最新 checkpoint，避免一轮对话产生的多个 checkpoint 重复显示。
+- 最后用户输入压缩空白、截断到 50 字，并转义 Markdown 表格分隔符。
+- 新增 SQLite 查询、显示格式和命令分发测试。
+
+**关键代码**：
+
+```sql
+ROW_NUMBER() OVER (
+  PARTITION BY thread_id
+  ORDER BY checkpoint_id DESC
+) AS checkpoint_rank
+```
+
+LangGraph 的 checkpoint ID 按时间递增；窗口函数选出每个线程最新状态，再从反序列化的消息列表中提取最后一条 `human` 消息。
+
+**验证**：
+
+- `pnpm typecheck`、`pnpm test --runInBand` 通过，共 15 个测试套件、59 条测试。
+- `pnpm build` 通过；构建产物执行 `/sessions` 正确输出最近会话表格，未调用 AI。
+
 ## 当前结构
 
 ```text
@@ -661,6 +689,7 @@ src/
     banner.ts   # 启动 figlet 标题与 boxen 信息框
     cli.ts      # 终端聊天循环、ESC 取消和可执行入口
     interactive_command.ts # 交互 slash 命令解析与分发
+    sessions.ts # SQLite 会话列表查询与显示格式化
     skills.ts   # SKILL.md 发现、metadata 解析与索引
     skills.test.ts
     tools.ts    # 工具元信息与统一注册表

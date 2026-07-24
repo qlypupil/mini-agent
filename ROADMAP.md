@@ -48,6 +48,7 @@
 - 将会话记忆迁移至 SQLite checkpointer，持久化到当前目录 `.data/checkpointer.db`。
 - CLI 每次启动生成新的会话 ID，隔离不同终端会话的 SQLite 历史。
 - 新增可扩展的交互命令分发器，`/new` 可在同一 CLI 进程中开启新会话。
+- 新增 `/sessions` 命令，只读列出 SQLite 中最近 20 个会话及其最后用户输入。
 
 ## 进行中
 
@@ -89,3 +90,4 @@
 - 每次 CLI 启动生成独立会话 ID；`pnpm test --runInBand`、`pnpm typecheck`、`pnpm build` 与 `termclaw --version` 通过。
 - `/new` 交互命令单元测试、类型检查与构建通过（14 个测试套件、55 条测试）；构建产物验证该命令在本地切换会话，不会调用 AI。
 - Commander 命令定义合并进 `cli.ts` 后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与构建产物 `termclaw --help` 通过。
+- `/sessions` 查询、格式化与命令分发测试通过（15 个测试套件、59 条测试）；构建产物验证输出最近会话表格，未调用 AI。
