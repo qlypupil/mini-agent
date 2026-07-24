@@ -1,13 +1,21 @@
 #!/usr/bin/env node
 
 import * as readline from 'readline'
+import { randomUUID } from 'node:crypto'
 import chalk from 'chalk'
+import { Command } from 'commander'
 import { runAgentStream } from './agent'
 import { printStartupBanner } from './banner'
-import { createProgram } from './command'
+import { handleInteractiveCommand } from './interactive_command'
 
-// 固定 ID 让 SQLite checkpointer 在同一目录的多次 CLI 启动间续接会话。
-const THREAD_ID = 'user-session-1'
+// CLI 的版本与描述始终跟随 package.json，避免在命令代码中重复维护元信息。
+const packageMetadata = require('../../package.json') as {
+	version: string
+	description: string
+}
+
+// 每次 CLI 启动创建独立会话，避免 SQLite 中的历史消息混入新的终端对话。
+let threadId = randomUUID()
 
 const youLabel = () => chalk.green.bold('You: ')
 const aiLabel = () => chalk.blue.bold('AI: ')
@@ -72,7 +80,7 @@ async function chat(userInput: string): Promise<void> {
 			(token: string) => {
 				process.stdout.write(token)
 			},
-			THREAD_ID,
+			threadId,
 			controller.signal,
 			(event) => {
 				if (event.status === 'started') {
@@ -133,6 +141,16 @@ async function main(): Promise<void> {
 			break
 		}
 
+		const commandHandled = await handleInteractiveCommand(userInput, {
+			startNewSession: () => {
+				threadId = randomUUID()
+			},
+			write: (message) => {
+				console.log(chalk.cyan(message))
+			},
+		})
+		if (commandHandled) continue
+
 		try {
 			await chat(userInput)
 		} catch (err) {
@@ -144,4 +162,10 @@ async function main(): Promise<void> {
 	}
 }
 
-void createProgram(main).parseAsync(process.argv)
+// 默认 action 保持无参数运行 termclaw 时直接进入交互聊天。
+void new Command()
+	.name('termclaw')
+	.description(packageMetadata.description)
+	.version(packageMetadata.version)
+	.action(main)
+	.parseAsync(process.argv)
