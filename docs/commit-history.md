@@ -732,6 +732,28 @@ return table.toString()
 - `pnpm typecheck`、`pnpm test --runInBand` 通过，共 15 个测试套件、61 条测试。
 - `pnpm build` 通过；构建产物 `/sessions` 显示 Unicode 边框表格。
 
+## 26. [`e8ce501` `feat: 显示 Context 用量并提示新会话`](https://github.com/qlypupil/mini-agent/commit/e8ce501)
+
+**目标**：在每轮回复后展示真实的模型 Context 使用量，并在接近上限时提示用户及时开启新会话。
+
+**主要改动**：
+
+- 新增 `context_usage.ts`，集中维护默认模型、已知 Context 上限、流式 usage 提取与格式化逻辑。
+- `agent.ts` 读取可选的 `MOONSHOT_MODEL`，收集工具循环中最后一次模型请求的 `input_tokens`，并将 Context 用量返回给 CLI。
+- CLI 在每轮成功回复后显示 token 数、上限与占比；当占比达到或超过 80% 时，提示 Context 即将压缩、可能丢失信息，并建议输入 `/new` 开启新会话。
+- 流式响应没有 usage 或模型上限未知时显示“未知”，不使用估算值。
+- 新增单元测试，覆盖上限查询、最终 usage 选择、格式化、80% 告警边界及缺失数据。
+
+**关键代码**：
+
+```ts
+inputTokens / contextLimit >= 0.8
+```
+
+阈值以未四舍五入的原始 token 比例计算，因此恰好 80% 会触发警告，不会受展示时格式化精度影响。
+
+**验证**：`pnpm typecheck` 与 `pnpm test --runInBand` 通过，共 16 个测试套件、69 条测试。
+
 ## 当前结构
 
 ```text
@@ -739,6 +761,8 @@ src/
   agent/
     agent.ts    # 模型、工具、SQLite checkpointer 与流式调用
     checkpointer.ts # 当前目录 SQLite checkpointer 工厂
+    context_usage.ts # 模型 context 用量与上限显示
+    context_usage.test.ts # Context 用量与告警边界单元测试
     banner.ts   # 启动 figlet 标题与 boxen 信息框
     cli.ts      # 终端聊天循环、ESC 取消和可执行入口
     interactive_command.ts # 交互 slash 命令解析与分发
