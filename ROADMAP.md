@@ -50,6 +50,7 @@
 - 新增可扩展的交互命令分发器，`/new` 可在同一 CLI 进程中开启新会话。
 - 新增 `/sessions` 命令，只读列出 SQLite 中最近 20 个会话及其最后用户输入。
 - 新增 `/rewind <thread_id>` 命令，校验会话存在后恢复历史会话。
+- 使用 `cli-table3` 渲染 `/sessions` 会话列表，提升终端表格可读性。
 
 ## 进行中
 
@@ -93,3 +94,4 @@
 - Commander 命令定义合并进 `cli.ts` 后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与构建产物 `termclaw --help` 通过。
 - `/sessions` 查询、格式化与命令分发测试通过（15 个测试套件、59 条测试）；构建产物验证输出最近会话表格，未调用 AI。
 - `/rewind` 存在性查询与命令分发测试通过（15 个测试套件、61 条测试）；构建产物恢复 `user-session-1` 成功，未调用 AI。
+- `cli-table3` 表格渲染后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过；构建产物 `/sessions` 显示终端边框表格。

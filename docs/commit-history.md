@@ -706,6 +706,32 @@ return true
 - `pnpm typecheck`、`pnpm test --runInBand` 通过，共 15 个测试套件、61 条测试。
 - `pnpm build` 通过；构建产物执行 `/rewind user-session-1` 显示恢复成功，未调用 AI。
 
+## 25. [`965402a` `feat: 使用终端表格展示会话列表`](https://github.com/qlypupil/mini-agent/commit/965402a)
+
+**目标**：让 `/sessions` 的会话列表在终端中保持列对齐和清晰边框，替代不适合控制台阅读的 Markdown 管道表格。
+
+**主要改动**：
+
+- 引入 `cli-table3` 及其锁定依赖。
+- `formatSessionsTable` 使用 `Table` 的表头和行 API 渲染 `thread_id`、最后用户输入与相对时间。
+- 保留完整 ID、50 字截断和相对时间的原有行为。
+- 更新单元测试，验证 Unicode 表格边框、表头、完整线程 ID 和截断内容。
+
+**关键代码**：
+
+```ts
+const table = new Table({
+  head: ['thread_id', '最后用户输入的问题', '时间'],
+})
+table.push([threadId, lastUserMessage, relativeTime])
+return table.toString()
+```
+
+**验证**：
+
+- `pnpm typecheck`、`pnpm test --runInBand` 通过，共 15 个测试套件、61 条测试。
+- `pnpm build` 通过；构建产物 `/sessions` 显示 Unicode 边框表格。
+
 ## 当前结构
 
 ```text

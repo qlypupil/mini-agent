@@ -27,7 +27,7 @@ cp .env.example .env
 
 ## 会话记忆
 
-Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`；每次 CLI 启动会创建新的会话 ID，因此不会自动引用上一次启动的对话。聊天过程中输入 `/new` 也会立即创建新的会话 ID，后续消息不会携带当前会话的历史。输入 `/sessions` 可只读列出最近 20 个会话的完整 ID、最后用户输入和相对时间；输入 `/rewind <thread_id>` 可恢复列表中的历史会话。`.data/` 已被 Git 忽略。
+Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`；每次 CLI 启动会创建新的会话 ID，因此不会自动引用上一次启动的对话。聊天过程中输入 `/new` 也会立即创建新的会话 ID，后续消息不会携带当前会话的历史。输入 `/sessions` 可用终端表格只读列出最近 20 个会话的完整 ID、最后用户输入和相对时间；输入 `/rewind <thread_id>` 可恢复列表中的历史会话。`.data/` 已被 Git 忽略。
 
 ## 文件工具
 
