@@ -92,6 +92,31 @@ export function formatSessionsTable(
 	].join('\n')
 }
 
+// 只检查 threadId 是否已有 checkpoint，不读取消息内容，也不修改数据库。
+export async function hasChatSession(
+	threadId: string,
+	databasePath = CHECKPOINT_DATABASE_PATH,
+): Promise<boolean> {
+	if (!threadId) return false
+
+	const checkpointer = createCheckpointer(databasePath)
+
+	try {
+		// 首次执行命令时初始化 schema，空数据库会自然返回 false。
+		await checkpointer.getTuple({
+			configurable: { thread_id: '', checkpoint_ns: '' },
+		})
+
+		return Boolean(
+			checkpointer.db
+				.prepare('SELECT 1 FROM checkpoints WHERE thread_id = ? LIMIT 1')
+				.get(threadId),
+		)
+	} finally {
+		checkpointer.db.close()
+	}
+}
+
 // 每个 thread 只读取最新 checkpoint，再按 checkpoint 中记录的时间排序。
 export async function listRecentChatSessions(
 	databasePath = CHECKPOINT_DATABASE_PATH,

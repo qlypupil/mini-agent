@@ -6,6 +6,7 @@ import {
 	formatRelativeTime,
 	formatSessionsTable,
 	getLastUserMessage,
+	hasChatSession,
 	listRecentChatSessions,
 } from './sessions'
 
@@ -73,6 +74,27 @@ describe('listRecentChatSessions', () => {
 				updatedAt: new Date('2026-07-24T10:05:00.000Z'),
 			},
 		])
+	})
+})
+
+describe('hasChatSession', () => {
+	it('checks whether a thread ID exists without reading its chat content', async () => {
+		const databasePath = join(
+			mkdtempSync(join(tmpdir(), 'termclaw-session-exists-')),
+			'checkpointer.db',
+		)
+
+		await expect(hasChatSession('missing-thread', databasePath)).resolves.toBe(false)
+		await saveCheckpoint(
+			databasePath,
+			'existing-thread',
+			'checkpoint-001',
+			'2026-07-24T10:00:00.000Z',
+			'保存的消息',
+		)
+
+		await expect(hasChatSession('existing-thread', databasePath)).resolves.toBe(true)
+		await expect(hasChatSession('missing-thread', databasePath)).resolves.toBe(false)
 	})
 })
 

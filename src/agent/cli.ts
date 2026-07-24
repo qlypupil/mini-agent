@@ -7,7 +7,11 @@ import { Command } from 'commander'
 import { runAgentStream } from './agent'
 import { printStartupBanner } from './banner'
 import { handleInteractiveCommand } from './interactive_command'
-import { formatSessionsTable, listRecentChatSessions } from './sessions'
+import {
+	formatSessionsTable,
+	hasChatSession,
+	listRecentChatSessions,
+} from './sessions'
 
 // CLI 的版本与描述始终跟随 package.json，避免在命令代码中重复维护元信息。
 const packageMetadata = require('../../package.json') as {
@@ -16,7 +20,7 @@ const packageMetadata = require('../../package.json') as {
 }
 
 // 每次 CLI 启动创建独立会话，避免 SQLite 中的历史消息混入新的终端对话。
-let threadId = randomUUID()
+let threadId: string = randomUUID()
 
 const youLabel = () => chalk.green.bold('You: ')
 const aiLabel = () => chalk.blue.bold('AI: ')
@@ -147,6 +151,12 @@ async function main(): Promise<void> {
 				threadId = randomUUID()
 			},
 			listSessions: async () => formatSessionsTable(await listRecentChatSessions()),
+			rewindSession: async (targetThreadId) => {
+				if (!await hasChatSession(targetThreadId)) return false
+
+				threadId = targetThreadId
+				return true
+			},
 			write: (message) => {
 				console.log(chalk.cyan(message))
 			},

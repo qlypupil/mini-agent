@@ -7,6 +7,7 @@ export interface InteractiveCommand {
 export interface InteractiveCommandContext {
 	startNewSession: () => void
 	listSessions: () => Promise<string>
+	rewindSession: (threadId: string) => Promise<boolean>
 	write: (message: string) => void
 }
 
@@ -74,6 +75,24 @@ const commands: Record<string, InteractiveCommandHandler> = {
 			context.write(await context.listSessions())
 		} catch (error) {
 			context.write(`读取会话失败: ${(error as Error).message}`)
+		}
+	},
+	rewind: async (command, context) => {
+		if (command.args.length !== 1) {
+			context.write('用法: /rewind <thread_id>')
+			return
+		}
+
+		const [threadId] = command.args
+		try {
+			if (!await context.rewindSession(threadId)) {
+				context.write(`未找到会话: ${threadId}`)
+				return
+			}
+
+			context.write(`已恢复会话: ${threadId}`)
+		} catch (error) {
+			context.write(`恢复会话失败: ${(error as Error).message}`)
 		}
 	},
 }
