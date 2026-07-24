@@ -27,7 +27,7 @@ cp .env.example .env
 
 ## 会话记忆
 
-Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`；每次 CLI 启动会创建新的会话 ID，因此不会自动引用上一次启动的对话。聊天过程中输入 `/new` 也会立即创建新的会话 ID，后续消息不会携带当前会话的历史。输入 `/sessions` 可只读列出最近 20 个会话的完整 ID、最后用户输入和相对时间。`.data/` 已被 Git 忽略。
+Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`；每次 CLI 启动会创建新的会话 ID，因此不会自动引用上一次启动的对话。聊天过程中输入 `/new` 也会立即创建新的会话 ID，后续消息不会携带当前会话的历史。输入 `/sessions` 可只读列出最近 20 个会话的完整 ID、最后用户输入和相对时间；输入 `/rewind <thread_id>` 可恢复列表中的历史会话。`.data/` 已被 Git 忽略。
 
 ## 文件工具
 
@@ -90,7 +90,7 @@ termclaw --version
 
 启动后会先显示 figlet 品牌标题、`package.json` 信息框（版本、描述、作者、文档）以及 ESC / exit 使用说明。
 
-聊天过程中可以输入 `/new` 开启新会话，或输入 `/sessions` 查看最近 20 个会话。交互命令会在本地解析，不会发送给 AI；未来可继续增加带参数的命令。
+聊天过程中可以输入 `/new` 开启新会话，输入 `/sessions` 查看最近 20 个会话，或输入 `/rewind <thread_id>` 恢复存在的历史会话。交互命令会在本地解析，不会发送给 AI；未来可继续增加带参数的命令。
 
 也可发布后全局安装：
 

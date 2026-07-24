@@ -679,6 +679,33 @@ LangGraph 的 checkpoint ID 按时间递增；窗口函数选出每个线程最�
 - `pnpm typecheck`、`pnpm test --runInBand` 通过，共 15 个测试套件、59 条测试。
 - `pnpm build` 通过；构建产物执行 `/sessions` 正确输出最近会话表格，未调用 AI。
 
+## 24. [`f77ed9c` `feat: 支持恢复历史会话`](https://github.com/qlypupil/mini-agent/commit/f77ed9c)
+
+**目标**：让用户用 `/sessions` 中的 `thread_id` 恢复历史对话，并避免无效 ID 覆盖当前会话。
+
+**主要改动**：
+
+- 新增 `/rewind <thread_id>` 交互命令。
+- `hasChatSession` 仅查询 `checkpoints` 表确认线程是否存在，不读取聊天内容，也不修改数据库。
+- 仅在存在性校验成功后将 CLI 当前 `threadId` 替换为目标 ID；失败时保留当前会话。
+- 新增存在性查询、成功恢复和不存在 ID 提示的单元测试。
+
+**关键代码**：
+
+```ts
+if (!await hasChatSession(targetThreadId)) return false
+
+threadId = targetThreadId
+return true
+```
+
+命令在本地完成后由分发器拦截，随后正常聊天才会使用恢复后的 `threadId` 续接 SQLite 历史。
+
+**验证**：
+
+- `pnpm typecheck`、`pnpm test --runInBand` 通过，共 15 个测试套件、61 条测试。
+- `pnpm build` 通过；构建产物执行 `/rewind user-session-1` 显示恢复成功，未调用 AI。
+
 ## 当前结构
 
 ```text
@@ -727,7 +754,7 @@ tsconfig.build.json # 仅编译运行时源码的构建配置
 ## 后续边界
 
 - SQLite checkpointer 默认使用当前工作目录 `.data/checkpointer.db`；CLI 每次启动生成新的 thread ID，不会自动恢复上一轮终端对话。
-- 交互命令目前仅实现 `/new`；`/sessions`、`/rewind` 和 `/skill` 仍是后续待实现能力。
+- 交互命令已实现 `/new`、`/sessions` 和 `/rewind`；`/skill` 仍是后续待实现能力。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
