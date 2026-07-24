@@ -1,3 +1,4 @@
+import Table from 'cli-table3'
 import { createCheckpointer, CHECKPOINT_DATABASE_PATH } from './checkpointer'
 
 export interface ChatSession {
@@ -67,29 +68,24 @@ function truncateMessage(message: string, maxLength = 50): string {
 		: message
 }
 
-function escapeTableCell(value: string): string {
-	return value.replace(/\|/g, '\\|')
-}
-
 export function formatSessionsTable(
 	sessions: ChatSession[],
 	now = new Date(),
 ): string {
 	if (sessions.length === 0) return '暂无聊天记录。'
 
-	const rows = sessions.map((session) =>
-		[
+	const table = new Table({
+		head: ['thread_id', '最后用户输入的问题', '时间'],
+	})
+	for (const session of sessions) {
+		table.push([
 			session.threadId,
-			escapeTableCell(truncateMessage(session.lastUserMessage)),
+			truncateMessage(session.lastUserMessage),
 			formatRelativeTime(session.updatedAt, now),
-		].join(' | '),
-	)
+		])
+	}
 
-	return [
-		'| thread_id | 最后用户输入的问题 | 时间 |',
-		'|-----------|-----------------|-----|',
-		...rows.map((row) => `| ${row} |`),
-	].join('\n')
+	return table.toString()
 }
 
 // 只检查 threadId 是否已有 checkpoint，不读取消息内容，也不修改数据库。

@@ -49,6 +49,7 @@
 		"@langchain/tavily": "^1.2.0",
 		"boxen": "^5.1.2",
 		"chalk": "^4.1.2",
+		"cli-table3": "^0.6.5",
 		"commander": "^15.0.0",
 		"dotenv": "^17.4.2",
 		"figlet": "^1.11.3",

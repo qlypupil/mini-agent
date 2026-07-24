@@ -99,7 +99,7 @@ describe('hasChatSession', () => {
 })
 
 describe('session display helpers', () => {
-	it('uses the final human message and formats concise table cells', () => {
+	it('uses the final human message and renders concise terminal table cells', () => {
 		const message = '一二三四五六七八九十'.repeat(6)
 		expect(
 			getLastUserMessage([
@@ -108,18 +108,21 @@ describe('session display helpers', () => {
 				{ type: 'human', content: message },
 			]),
 		).toBe(message)
-		expect(
-			formatSessionsTable(
-				[
-					{
-						threadId: 'thread-full-id',
-						lastUserMessage: `${message}|包含分隔符`,
-						updatedAt: new Date('2026-07-24T11:59:30.000Z'),
-					},
-				],
-				new Date('2026-07-24T12:00:00.000Z'),
-			),
-		).toContain('| thread-full-id | 一二三四五六七八九十'.repeat(1))
+		const table = formatSessionsTable(
+			[
+				{
+					threadId: 'thread-full-id',
+					lastUserMessage: `${message}|包含分隔符`,
+					updatedAt: new Date('2026-07-24T11:59:30.000Z'),
+				},
+			],
+			new Date('2026-07-24T12:00:00.000Z'),
+		)
+
+		expect(table).toContain('┌')
+		expect(table).toContain('thread-full-id')
+		expect(table).toContain('最后用户输入的问题')
+		expect(table).toContain(`${Array.from(message).slice(0, 50).join('')}...`)
 	})
 
 	it('uses concise relative time labels', () => {
