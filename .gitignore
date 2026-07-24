@@ -24,3 +24,4 @@ pnpm-debug.log*
 # Local AI tooling
 .codex/
 .agents/
+skills-lock.json
