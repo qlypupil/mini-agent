@@ -619,6 +619,38 @@ checkpointer 只依赖当前工作目录，因此每个项目目录拥有独立 
 - 直接 SQLite 读写确认 `.data/checkpointer.db` 已创建。
 - 两次独立 `termclaw` 进程成功保存并恢复 token `cobalt-4729`。
 
+## 22. [`63c5593` `feat: 支持通过 /new 开启新会话`](https://github.com/qlypupil/mini-agent/commit/63c5593)
+
+**目标**：隔离不同终端聊天的上下文，并支持在不退出 CLI 的情况下开始干净的新会话。
+
+**主要改动**：
+
+- 每次启动 CLI 用 `randomUUID()` 创建新的 `threadId`，不再默认恢复旧会话。
+- 新增 `interactive_command.ts`，解析聊天中的 slash 命令，并保留 `args` 和 `rawArgs`，适配未来不同参数形式的命令。
+- 实现 `/new`：生成新的 `threadId`，仅在本地提示，不会将命令发送给模型。
+- 未知 slash 命令也在本地处理，避免误作为普通聊天内容请求 AI。
+- 将仅供 CLI 使用的 Commander 定义并入 `cli.ts`，删除 `command.ts`，清晰区分外部 CLI 选项与聊天内命令。
+
+**关键代码**：
+
+```ts
+const commandHandled = await handleInteractiveCommand(userInput, {
+  startNewSession: () => {
+    threadId = randomUUID()
+  },
+  write: (message) => console.log(chalk.cyan(message)),
+})
+if (commandHandled) continue
+```
+
+命令分发器返回 `true` 时，CLI 跳过 `runAgentStream`，因此 `/new` 不消耗模型请求，也不污染对话历史。
+
+**验证**：
+
+- 新增命令解析、`/new`、未知命令与未来参数形式测试；共 14 个测试套件、55 条测试通过。
+- `pnpm typecheck`、`pnpm build` 通过；构建产物 `termclaw --help` 正常。
+- 构建产物输入 `/new` 显示“已开启新会话。”，未调用 AI。
+
 ## 当前结构
 
 ```text
@@ -628,7 +660,7 @@ src/
     checkpointer.ts # 当前目录 SQLite checkpointer 工厂
     banner.ts   # 启动 figlet 标题与 boxen 信息框
     cli.ts      # 终端聊天循环、ESC 取消和可执行入口
-    command.ts  # Commander 命令定义
+    interactive_command.ts # 交互 slash 命令解析与分发
     skills.ts   # SKILL.md 发现、metadata 解析与索引
     skills.test.ts
     tools.ts    # 工具元信息与统一注册表
@@ -665,7 +697,8 @@ tsconfig.build.json # 仅编译运行时源码的构建配置
 
 ## 后续边界
 
-- SQLite checkpointer 默认使用当前工作目录 `.data/checkpointer.db`；不同工作目录使用不同的本地会话数据库。
+- SQLite checkpointer 默认使用当前工作目录 `.data/checkpointer.db`；CLI 每次启动生成新的 thread ID，不会自动恢复上一轮终端对话。
+- 交互命令目前仅实现 `/new`；`/sessions`、`/rewind` 和 `/skill` 仍是后续待实现能力。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。

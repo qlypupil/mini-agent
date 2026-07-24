@@ -18,7 +18,7 @@
 - 支持通过环境变量配置 Moonshot API Base URL。
 - 接入 LangGraph MemorySaver，实现同一进程内的会话记忆。
 - 接入 Commander.js，并注册 `termclaw` 全局 CLI 命令。
-- 将 Commander 命令定义抽离至 `src/agent/command.ts`。
+- 将 Commander 命令定义整合进 `src/agent/cli.ts`，与外部 CLI 入口保持一致。
 - 抽取 CLI readline 接口创建函数。
 - 支持在 Agent 流式回复期间通过 ESC 取消请求。
 - 新增含 GitHub 提交直达链接的历史说明文档，记录各阶段的关键实现与验证。
@@ -46,6 +46,8 @@
 - 使用 chalk 为 CLI 提示符、工具状态与 skill 诊断日志上色，提升终端可读性。
 - 启动时用 figlet / boxen 展示包名、版本、描述、作者、文档与快捷键说明。
 - 将会话记忆迁移至 SQLite checkpointer，持久化到当前目录 `.data/checkpointer.db`。
+- CLI 每次启动生成新的会话 ID，隔离不同终端会话的 SQLite 历史。
+- 新增可扩展的交互命令分发器，`/new` 可在同一 CLI 进程中开启新会话。
 
 ## 进行中
 
@@ -84,3 +86,6 @@
 - `run_py` 单元测试、类型检查与构建通过（12 个测试套件、48 条测试）；真实 `termclaw` 调用 `run_py` 执行 `print(2 + 3)`，返回 `5`。
 - 包名与 CLI 重命名为 `termclaw` 后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过；`termclaw --help` / `--version` 正常。
 - SQLite checkpointer 单元测试、类型检查与构建通过（13 个测试套件、49 条测试）；两次独立 `termclaw` 进程成功保存并恢复 token `cobalt-4729`。
+- 每次 CLI 启动生成独立会话 ID；`pnpm test --runInBand`、`pnpm typecheck`、`pnpm build` 与 `termclaw --version` 通过。
+- `/new` 交互命令单元测试、类型检查与构建通过（14 个测试套件、55 条测试）；构建产物验证该命令在本地切换会话，不会调用 AI。
+- Commander 命令定义合并进 `cli.ts` 后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与构建产物 `termclaw --help` 通过。
