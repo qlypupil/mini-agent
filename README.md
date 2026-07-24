@@ -23,7 +23,9 @@ cp .env.example .env
 
 应用入口会通过 `dotenv` 自动加载 `.env`。`.env` 已被 Git 忽略，禁止提交密钥或 token。
 
-`MOONSHOT_API_KEY` 是必填项；`MOONSHOT_BASE_URL` 可选，未设置时使用 Moonshot 默认地址。使用 `web_search` 时还需要配置 `TAVILY_API_KEY`。
+`MOONSHOT_API_KEY` 是必填项；`MOONSHOT_BASE_URL` 可选，未设置时使用 Moonshot 默认地址；`MOONSHOT_MODEL` 可选，默认 `kimi-k2.6`。使用 `web_search` 时还需要配置 `TAVILY_API_KEY`。
+
+每轮 AI 成功回复后，终端会显示最终模型请求的 context token、该模型已知的上下文上限和占比。占比达到 80% 时，CLI 会警告 Context 即将压缩、可能丢失信息，并建议输入 `/new` 开启新会话。若兼容网关未返回流式 usage，或模型上限未被内置识别，对应字段会显示“未知”，不会使用不可靠的估算值。
 
 ## 会话记忆
 

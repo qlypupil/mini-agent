@@ -3,6 +3,12 @@ import { createAgent } from 'langchain'
 import { ChatOpenAI } from '@langchain/openai'
 import { meta } from 'zod/v4/core'
 import { createCheckpointer } from './checkpointer'
+import {
+	DEFAULT_MOONSHOT_MODEL,
+	getLatestInputTokens,
+	getModelContextLimit,
+	type ContextUsage,
+} from './context_usage'
 import { skills } from './skills'
 import { buildSkillsInstruction } from './skills/prompt'
 import { tools } from './tools'
@@ -12,13 +18,14 @@ const MOONSHOT_API_KEY = process.env.MOONSHOT_API_KEY
 // 允许部署环境替换兼容网关，同时保持未配置时的原有 Moonshot 地址。
 const MOONSHOT_BASE_URL =
 	process.env.MOONSHOT_BASE_URL ?? 'https://api.moonshot.cn/v1'
+const MOONSHOT_MODEL = process.env.MOONSHOT_MODEL ?? DEFAULT_MOONSHOT_MODEL
 
 if (!MOONSHOT_API_KEY) {
 	throw new Error('MOONSHOT_API_KEY is not set')
 }
 
 const model = new ChatOpenAI({
-	model: 'kimi-k2.6',
+	model: MOONSHOT_MODEL,
 	apiKey: MOONSHOT_API_KEY,
 	configuration: {
 		baseURL: MOONSHOT_BASE_URL,
@@ -53,6 +60,11 @@ type ToolEvent = {
 	error?: string
 }
 
+export interface AgentRunResult {
+	response: string
+	contextUsage: ContextUsage
+}
+
 /**
  * 以流式方式运行 agent，将 token 逐个回调给调用方
  *
@@ -62,7 +74,7 @@ type ToolEvent = {
  * @param {Function} onToken   - 每个 token 到来时的回调 (token: string) => void
  * @param {string} threadId    - 会话 ID，相同 ID 会续接当前进程内的历史记录
  * @param {AbortSignal} signal - 用于取消当前 Agent 请求的信号
- * @returns {Promise<string>}  完整的 AI 回复文本
+ * @returns {Promise<AgentRunResult>} 完整的 AI 回复文本与最终模型请求的 context 用量
  */
 export async function runAgentStream(
 	userMessage: string,
@@ -70,7 +82,7 @@ export async function runAgentStream(
 	threadId: string = 'default-session',
 	signal?: AbortSignal,
 	onToolEvent?: (event: ToolEvent) => void,
-): Promise<string> {
+): Promise<AgentRunResult> {
 	const config = {
 		configurable: {
 			thread_id: threadId,
@@ -84,6 +96,7 @@ export async function runAgentStream(
 
 	let fullResponse = ''
 	const reportedToolCalls = new Set<string>()
+	const usageMetadata: unknown[] = []
 
 	for await (const chunk of stream as any) {
 		// streamMode: 'messages' 的每个事件由消息对象和其运行元数据组成。
@@ -116,6 +129,10 @@ export async function runAgentStream(
 			continue
 		}
 
+		if ((message as any).usage_metadata !== undefined) {
+			usageMetadata.push((message as any).usage_metadata)
+		}
+
 		// AIMessageChunk 的 content 在 message.content 属性上，不在 kwargs.content
 		const content: string =
 			(message as any).content ?? (message as any).kwargs?.content ?? ''
@@ -141,5 +158,12 @@ export async function runAgentStream(
 		fullResponse += content
 	}
 
-	return fullResponse
+	return {
+		response: fullResponse,
+		contextUsage: {
+			model: MOONSHOT_MODEL,
+			inputTokens: getLatestInputTokens(usageMetadata),
+			contextLimit: getModelContextLimit(MOONSHOT_MODEL),
+		},
+	}
 }

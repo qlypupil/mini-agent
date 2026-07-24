@@ -6,6 +6,7 @@ import chalk from 'chalk'
 import { Command } from 'commander'
 import { runAgentStream } from './agent'
 import { printStartupBanner } from './banner'
+import { formatContextUsage, shouldWarnContextUsage } from './context_usage'
 import { handleInteractiveCommand } from './interactive_command'
 import {
 	formatSessionsTable,
@@ -80,7 +81,7 @@ async function chat(userInput: string): Promise<void> {
 	activeController = controller
 
 	try {
-		await runAgentStream(
+		const result = await runAgentStream(
 			userInput,
 			(token: string) => {
 				process.stdout.write(token)
@@ -110,7 +111,14 @@ async function chat(userInput: string): Promise<void> {
 				)
 			},
 		)
-		process.stdout.write('\n\n')
+		process.stdout.write(
+			`\n${chalk.gray(formatContextUsage(result.contextUsage))}\n\n`,
+		)
+		if (shouldWarnContextUsage(result.contextUsage)) {
+			process.stdout.write(
+				`${chalk.yellow('警告：Context window 接近大模型接口上限，即将压缩 Context，可能会丢失信息。')}\n${chalk.yellow('建议输入 /new 命令开启新会话。')}\n\n`,
+			)
+		}
 	} catch (error) {
 		if (controller.signal.aborted) {
 			process.stdout.write(`\n\n${chalk.yellow('已取消当前请求。')}\n\n`)
