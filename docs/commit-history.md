@@ -587,12 +587,45 @@ const skillTools = skillNames.length
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 通过；启动可见品牌标题与信息框。
 
+## 21. [`7ace0c8` `feat: 使用 SQLite 持久化会话记忆`](https://github.com/qlypupil/mini-agent/commit/7ace0c8fa04956723854bb5c1f469d7ab879f57a)
+
+**目标**：将仅在单个进程内有效的 `MemorySaver` 替换为本地 SQLite 持久化，使同一工作目录中的 CLI 重启后仍能续接会话。
+
+**主要改动**：
+
+- 使用 `@langchain/langgraph-checkpoint-sqlite` 的 `SqliteSaver` 替换 `MemorySaver`。
+- 新增 `checkpointer.ts`，固定数据库位置为当前工作目录 `.data/checkpointer.db`，并在启动时创建缺失目录。
+- Agent 与 CLI 保持固定 `user-session-1`，因此同一目录的多次启动会读取相同 thread 的历史。
+- `.data/` 加入 Git 忽略，避免将本地聊天数据提交。
+- `pnpm-workspace.yaml` 显式批准 `better-sqlite3` 的原生构建脚本；它是 SQLite checkpointer 的本地驱动。
+- 新增 SQLite 写入和读取单元测试。
+
+**关键代码**：
+
+```ts
+export function createCheckpointer(
+  databasePath = CHECKPOINT_DATABASE_PATH,
+): SqliteSaver {
+  mkdirSync(dirname(databasePath), { recursive: true })
+  return SqliteSaver.fromConnString(databasePath)
+}
+```
+
+checkpointer 只依赖当前工作目录，因此每个项目目录拥有独立 `.data/checkpointer.db`，不会混合不同项目的会话。
+
+**验证**：
+
+- `pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 13 个测试套件、49 条测试。
+- 直接 SQLite 读写确认 `.data/checkpointer.db` 已创建。
+- 两次独立 `termclaw` 进程成功保存并恢复 token `cobalt-4729`。
+
 ## 当前结构
 
 ```text
 src/
   agent/
-    agent.ts    # 模型、工具、MemorySaver 与流式调用
+    agent.ts    # 模型、工具、SQLite checkpointer 与流式调用
+    checkpointer.ts # 当前目录 SQLite checkpointer 工厂
     banner.ts   # 启动 figlet 标题与 boxen 信息框
     cli.ts      # 终端聊天循环、ESC 取消和可执行入口
     command.ts  # Commander 命令定义
@@ -632,7 +665,7 @@ tsconfig.build.json # 仅编译运行时源码的构建配置
 
 ## 后续边界
 
-- `MemorySaver` 仅提供进程内短期记忆；需要跨重启保存时，应替换为数据库 checkpointer。
+- SQLite checkpointer 默认使用当前工作目录 `.data/checkpointer.db`；不同工作目录使用不同的本地会话数据库。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
