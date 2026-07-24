@@ -1,8 +1,8 @@
 import './env'
 import { createAgent } from 'langchain'
-import { MemorySaver } from '@langchain/langgraph'
 import { ChatOpenAI } from '@langchain/openai'
 import { meta } from 'zod/v4/core'
+import { createCheckpointer } from './checkpointer'
 import { skills } from './skills'
 import { buildSkillsInstruction } from './skills/prompt'
 import { tools } from './tools'
@@ -26,8 +26,8 @@ const model = new ChatOpenAI({
 	streaming: true,
 })
 
-// MemorySaver 按 threadId 保存当前 Node.js 进程内的对话状态。
-const checkpointer = new MemorySaver()
+// SQLite checkpointer 按 threadId 将会话状态保存到当前目录的 .data/checkpointer.db。
+const checkpointer = createCheckpointer()
 
 function buildSystemPrompt(): string {
 	const realtimeInstructions =
@@ -56,8 +56,7 @@ type ToolEvent = {
 /**
  * 以流式方式运行 agent，将 token 逐个回调给调用方
  *
- * MemorySaver 会在当前进程内按 threadId 保存并续接会话历史。
- * 进程重启后，内存中的历史会被清空。
+ * SQLite checkpointer 会按 threadId 保存并续接跨进程会话历史。
  *
  * @param {string} userMessage - 当前用户输入
  * @param {Function} onToken   - 每个 token 到来时的回调 (token: string) => void

@@ -45,6 +45,7 @@
 - 将 npm 包名与全局 CLI 命令重命名为 `termclaw`，避免与已占用的 `miniagent` 冲突。
 - 使用 chalk 为 CLI 提示符、工具状态与 skill 诊断日志上色，提升终端可读性。
 - 启动时用 figlet / boxen 展示包名、版本、描述、作者、文档与快捷键说明。
+- 将会话记忆迁移至 SQLite checkpointer，持久化到当前目录 `.data/checkpointer.db`。
 
 ## 进行中
 
@@ -82,3 +83,4 @@
 - skills / tools 入口提升为 `skills.ts` / `tools.ts` 后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（11 个测试套件、39 条测试）；构建产物仍发现内置 skills 并注册 `load_skill`。
 - `run_py` 单元测试、类型检查与构建通过（12 个测试套件、48 条测试）；真实 `termclaw` 调用 `run_py` 执行 `print(2 + 3)`，返回 `5`。
 - 包名与 CLI 重命名为 `termclaw` 后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过；`termclaw --help` / `--version` 正常。
+- SQLite checkpointer 单元测试、类型检查与构建通过（13 个测试套件、49 条测试）；两次独立 `termclaw` 进程成功保存并恢复 token `cobalt-4729`。

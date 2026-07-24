@@ -27,7 +27,7 @@ cp .env.example .env
 
 ## 会话记忆
 
-Agent 使用 LangGraph `MemorySaver` 按 `threadId` 保存短期会话历史。CLI 在一次启动期间使用固定的会话 ID，因此后续提问可以引用前文；退出 CLI 或重启进程后历史会清空。
+Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`，因此同一目录中重启 CLI 后仍可引用前文；`.data/` 已被 Git 忽略。
 
 ## 文件工具
 

@@ -6,8 +6,7 @@ import { runAgentStream } from './agent'
 import { printStartupBanner } from './banner'
 import { createProgram } from './command'
 
-// 固定 ID 让 MemorySaver 在本次 CLI 进程中续接每一轮消息。
-// 退出 CLI 后内存清空，下一次启动会开始新的会话。
+// 固定 ID 让 SQLite checkpointer 在同一目录的多次 CLI 启动间续接会话。
 const THREAD_ID = 'user-session-1'
 
 const youLabel = () => chalk.green.bold('You: ')
