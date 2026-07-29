@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import chalk from 'chalk'
 import { Command } from 'commander'
 import {
-	compressChatContext,
+	compressChatContextIfNeeded,
 	describeModel,
 	ensureModelConfigured,
 	getChatMessages,
@@ -18,7 +18,7 @@ import { printStartupBanner } from './cli/banner'
 import { ContextSessionManager } from './cli/context_commands'
 import { handleInteractiveCommand } from './cli/commands'
 import { selectMenu, type SelectMenuOption } from './cli/select_menu'
-import { formatContextUsage, shouldWarnContextUsage } from './runtime/context_usage'
+import { formatContextUsage } from './runtime/context_usage'
 import {
 	getDefaultModelProvider,
 	getModelMetadata,
@@ -247,37 +247,41 @@ async function chat(userInput: string): Promise<void> {
 		process.stdout.write(
 			`\n${chalk.gray(formatContextUsage(result.contextUsage))}\n\n`,
 		)
-		if (shouldWarnContextUsage(result.contextUsage)) {
+		const automaticCompression = await compressChatContextIfNeeded(
+			requestThreadId,
+			result.contextUsage,
+			requestModelProvider,
+			{
+				onStart: () => {
+					process.stdout.write(
+						`${chalk.yellow('警告：Context window 接近大模型接口上限，正在自动压缩 Context，可能会丢失信息。')}\n`,
+					)
+				},
+			},
+		)
+
+		if (automaticCompression.status === 'failed') {
 			process.stdout.write(
-				`${chalk.yellow('警告：Context window 接近大模型接口上限，正在自动压缩 Context，可能会丢失信息。')}\n`,
+				`${chalk.red(`Context 自动压缩失败：${automaticCompression.error}`)}\n${chalk.yellow('原始聊天记录未修改，下轮达到阈值时将重试压缩。')}\n\n`,
 			)
-
-			try {
-				const compression = await compressChatContext(
-					requestThreadId,
-					requestModelProvider,
-				)
-				if (compression.compressed) {
-					process.stdout.write(
-						`${chalk.green(`Context 压缩完成：本次压缩 ${compression.newlyCompressedMessageCount} 条消息，保留最近 ${compression.retainedMessageCount} 条消息，累计压缩 ${compression.compressionCount} 次。`)}\n${chalk.gray('压缩结果将在下一轮对话中使用，SQLite 原始聊天记录未修改。')}\n`,
-					)
-				} else {
-					process.stdout.write(
-						`${chalk.yellow(`当前没有新的可压缩历史，已保留最近 ${compression.retainedMessageCount} 条消息。`)}\n`,
-					)
-				}
-
-				if (compression.compressionCount >= 3 || !compression.compressed) {
-					process.stdout.write(
-						`${chalk.red.bold('强烈建议输入 /new 命令开启新会话。')}\n`,
-					)
-				}
-				process.stdout.write('\n')
-			} catch (error) {
+		} else if (automaticCompression.status === 'completed') {
+			const { compression } = automaticCompression
+			if (compression.compressed) {
 				process.stdout.write(
-					`${chalk.red(`Context 自动压缩失败：${(error as Error).message}`)}\n${chalk.yellow('原始聊天记录未修改，下轮达到阈值时将重试压缩。')}\n\n`,
+					`${chalk.green(`Context 压缩完成：本次压缩 ${compression.newlyCompressedMessageCount} 条消息，保留最近 ${compression.retainedMessageCount} 条消息，累计压缩 ${compression.compressionCount} 次。`)}\n${chalk.gray('压缩结果将在下一轮对话中使用，SQLite 原始聊天记录未修改。')}\n`,
+				)
+			} else {
+				process.stdout.write(
+					`${chalk.yellow(`当前没有新的可压缩历史，已保留最近 ${compression.retainedMessageCount} 条消息。`)}\n`,
 				)
 			}
+
+			if (compression.compressionCount >= 3 || !compression.compressed) {
+				process.stdout.write(
+					`${chalk.red.bold('强烈建议输入 /new 命令开启新会话。')}\n`,
+				)
+			}
+			process.stdout.write('\n')
 		}
 	} catch (error) {
 		if (controller.signal.aborted) {

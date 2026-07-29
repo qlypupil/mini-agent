@@ -15,6 +15,7 @@ import { ContextCompressionStore } from './storage/context_compression'
 import {
 	getLatestInputTokens,
 	getModelContextLimit,
+	shouldWarnContextUsage,
 	type ContextUsage,
 } from './runtime/context_usage'
 import {
@@ -131,6 +132,41 @@ export async function compressChatContext(
 		await contextCompressionStore.set(threadId, result.compression)
 	}
 	return result
+}
+
+export type AutomaticContextCompressionResult =
+	| { status: 'not-needed' }
+	| { status: 'completed'; compression: ContextCompressionResult }
+	| { status: 'failed'; error: string }
+
+export async function compressChatContextIfNeeded(
+	threadId: string,
+	contextUsage: ContextUsage,
+	modelProvider: ModelProvider = getDefaultModelProvider(),
+	options: {
+		onStart?: () => void
+		compress?: typeof compressChatContext
+	} = {},
+): Promise<AutomaticContextCompressionResult> {
+	if (!shouldWarnContextUsage(contextUsage)) {
+		return { status: 'not-needed' }
+	}
+
+	options.onStart?.()
+	try {
+		return {
+			status: 'completed',
+			compression: await (options.compress ?? compressChatContext)(
+				threadId,
+				modelProvider,
+			),
+		}
+	} catch (error) {
+		return {
+			status: 'failed',
+			error: error instanceof Error ? error.message : String(error),
+		}
+	}
 }
 
 type ToolEvent = {
