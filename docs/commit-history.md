@@ -754,28 +754,64 @@ inputTokens / contextLimit >= 0.8
 
 **验证**：`pnpm typecheck` 与 `pnpm test --runInBand` 通过，共 16 个测试套件、69 条测试。
 
+## 27. [`c475136` `feat: 支持手动管理模型 Context 并整理 Agent 结构`](https://github.com/qlypupil/mini-agent/commit/c475136e4d64990010238eb9468bdcac970a4bb6)
+
+**目标**：允许用户显式控制下一轮模型请求使用的聊天记录，同时保留只影响下一轮、永久修改当前会话和创建分支会话三种应用方式。
+
+**主要改动**：
+
+- 将 LangChain `createAgent` 替换为自定义 LangGraph `StateGraph`，显式编排 Context 变换、模型请求和工具调用循环。
+- 新增 `/context` 命令，支持查看、替换、删除、摘要、载入摘要文件、预览和取消修改。
+- Context 修改按 message ID 执行，并校验工具调用 `AIMessage` 与对应 `ToolMessage` 的完整性。
+- 支持 `once`、`persist`、`fork` 三种应用模式；`once` 不覆盖 SQLite 原历史，`persist` 更新当前 thread，`fork` 创建并切换到新 thread。
+- 摘要使用不绑定 checkpointer 的独立模型调用，避免内部摘要提示污染聊天记录。
+- 将 `src/agent` 平铺模块整理到 `cli`、`runtime`、`storage`、`skills` 和 `tools` 目录，并同步更新 README 与 Roadmap。
+
+**关键流程**：
+
+```text
+START -> apply_context -> model_request -> END
+                             | tool_calls
+                             v
+                           tools
+                             `-> model_request
+```
+
+`messages` 是由 SQLite checkpointer 持久化的 LangGraph State；`contextControl` 是单次 graph run 的 Runtime Context。`once` 只在 `model_request` 节点构造模型输入时应用补丁，`persist` 则通过 `RemoveMessage(REMOVE_ALL_MESSAGES)` 和修改后的消息重置持久化 State。
+
+**验证**：
+
+- `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过，共 19 个测试套件、85 条测试。
+- `git diff --check` 通过。
+- 构建产物通过真实 Moonshot 流式回归；本地 `/context` 帮助命令不会调用 AI，并能输出全部子命令。
+
 ## 当前结构
 
 ```text
 src/
   agent/
-    agent.ts    # 模型、工具、SQLite checkpointer 与流式调用
-    checkpointer.ts # 当前目录 SQLite checkpointer 工厂
-    context_usage.ts # 模型 context 用量与上限显示
-    context_usage.test.ts # Context 用量与告警边界单元测试
-    banner.ts   # 启动 figlet 标题与 boxen 信息框
-    cli.ts      # 终端聊天循环、ESC 取消和可执行入口
-    interactive_command.ts # 交互 slash 命令解析与分发
-    sessions.ts # SQLite 会话列表查询与显示格式化
-    skills.ts   # SKILL.md 发现、metadata 解析与索引
-    skills.test.ts
-    tools.ts    # 工具元信息与统一注册表
+    agent.ts              # 模型初始化、Agent API 与流式调用
+    cli.ts                # 终端聊天循环、ESC 取消和可执行入口
+    env.ts                # 环境变量加载
+    cli/
+      banner.ts           # 启动 figlet 标题与 boxen 信息框
+      commands.ts         # 交互 slash 命令解析与分发
+      context_commands.ts # /context 暂存、预览与应用状态
+    runtime/
+      graph.ts            # StateGraph、模型请求与工具循环
+      context_patch.ts    # 消息选择、校验与 Context 变换
+      context_usage.ts    # Context token 用量与告警
+    storage/
+      checkpointer.ts     # 当前目录 SQLite checkpointer 工厂
+      sessions.ts         # SQLite 会话查询与终端表格
     skills/
+      index.ts                # SKILL.md 发现、metadata 解析与索引
       prompt.ts                # 模型可见的 skills 目录生成
       planner/SKILL.md         # 计划与待办 skill
       programmer-resume/SKILL.md # 程序员简历 skill
       skill-creator/           # Anthropic skill-creator 及脚本资源
     tools/
+      index.ts                 # 工具元信息与统一注册表
       read_file_tool.ts       # 当前目录内的安全文件读取实现
       read_file_tool.test.ts  # 文件读取安全边界单元测试
       write_file_tool.ts       # 当前目录内的安全文件写入实现
@@ -804,7 +840,8 @@ tsconfig.build.json # 仅编译运行时源码的构建配置
 ## 后续边界
 
 - SQLite checkpointer 默认使用当前工作目录 `.data/checkpointer.db`；CLI 每次启动生成新的 thread ID，不会自动恢复上一轮终端对话。
-- 交互命令已实现 `/new`、`/sessions` 和 `/rewind`；`/skill` 仍是后续待实现能力。
+- 交互命令已实现 `/new`、`/sessions`、`/rewind` 和 `/context`；`/skill` 仍是后续待实现能力。
+- `/context summarize` 会发起一次独立模型请求并消耗 token；`/context apply once` 只改变下一轮模型所见历史，该轮新消息和 AI 回复仍会追加到原 thread。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
