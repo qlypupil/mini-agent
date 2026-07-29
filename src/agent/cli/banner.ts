@@ -11,7 +11,7 @@ type PackageMetadata = {
 	homepage?: string
 }
 
-const packageMetadata = require('../../package.json') as PackageMetadata
+const packageMetadata = require('../../../package.json') as PackageMetadata
 
 function formatField(label: string, value: string): string {
 	return `${chalk.cyan.bold(label.padEnd(12))}${value}`
@@ -44,7 +44,8 @@ export function printStartupBanner(): void {
 	)
 
 	console.log(chalk.dim('使用说明'))
-	console.log(chalk.dim('  ESC    取消当前 AI 请求'))
-	console.log(chalk.dim('  exit   退出聊天'))
+	console.log(chalk.dim('  ESC       取消当前 AI 请求'))
+	console.log(chalk.dim('  /context  查看和编辑模型下一轮使用的聊天记录'))
+	console.log(chalk.dim('  exit      退出聊天'))
 	console.log()
 }

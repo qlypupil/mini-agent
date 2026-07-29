@@ -4,15 +4,23 @@ import * as readline from 'readline'
 import { randomUUID } from 'node:crypto'
 import chalk from 'chalk'
 import { Command } from 'commander'
-import { runAgentStream } from './agent'
-import { printStartupBanner } from './banner'
-import { formatContextUsage, shouldWarnContextUsage } from './context_usage'
-import { handleInteractiveCommand } from './interactive_command'
+import {
+	getChatMessages,
+	persistContextPatch,
+	runAgentStream,
+	seedChatSession,
+	summarizeMessages,
+} from './agent'
+import { printStartupBanner } from './cli/banner'
+import { ContextSessionManager } from './cli/context_commands'
+import { handleInteractiveCommand } from './cli/commands'
+import { formatContextUsage, shouldWarnContextUsage } from './runtime/context_usage'
 import {
 	formatSessionsTable,
 	hasChatSession,
 	listRecentChatSessions,
-} from './sessions'
+} from './storage/sessions'
+import { readFileTool } from './tools/read_file_tool'
 
 // CLI 的版本与描述始终跟随 package.json，避免在命令代码中重复维护元信息。
 const packageMetadata = require('../../package.json') as {
@@ -22,6 +30,18 @@ const packageMetadata = require('../../package.json') as {
 
 // 每次 CLI 启动创建独立会话，避免 SQLite 中的历史消息混入新的终端对话。
 let threadId: string = randomUUID()
+
+const contextSession = new ContextSessionManager({
+	getThreadId: () => threadId,
+	setThreadId: (nextThreadId) => {
+		threadId = nextThreadId
+	},
+	getMessages: getChatMessages,
+	persistPatch: persistContextPatch,
+	seedSession: seedChatSession,
+	summarize: summarizeMessages,
+	readSummaryFile: readFileTool,
+})
 
 const youLabel = () => chalk.green.bold('You: ')
 const aiLabel = () => chalk.blue.bold('AI: ')
@@ -79,6 +99,7 @@ async function chat(userInput: string): Promise<void> {
 	// 每轮请求独享控制器，避免 ESC 取消到下一轮对话。
 	const controller = new AbortController()
 	activeController = controller
+	const contextControl = contextSession.takeNextContextControl(threadId)
 
 	try {
 		const result = await runAgentStream(
@@ -110,6 +131,7 @@ async function chat(userInput: string): Promise<void> {
 					`\n${chalk.green.dim(`[Tool] ${event.name} completed.`)}\n\n${aiLabel()}`,
 				)
 			},
+			contextControl,
 		)
 		process.stdout.write(
 			`\n${chalk.gray(formatContextUsage(result.contextUsage))}\n\n`,
@@ -156,15 +178,18 @@ async function main(): Promise<void> {
 
 		const commandHandled = await handleInteractiveCommand(userInput, {
 			startNewSession: () => {
+				contextSession.clear()
 				threadId = randomUUID()
 			},
 			listSessions: async () => formatSessionsTable(await listRecentChatSessions()),
 			rewindSession: async (targetThreadId) => {
 				if (!await hasChatSession(targetThreadId)) return false
 
+				contextSession.clear()
 				threadId = targetThreadId
 				return true
 			},
+			manageContext: (rawArgs) => contextSession.handle(rawArgs),
 			write: (message) => {
 				console.log(chalk.cyan(message))
 			},

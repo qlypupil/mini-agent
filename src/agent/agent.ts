@@ -1,14 +1,23 @@
 import './env'
-import { createAgent } from 'langchain'
 import { ChatOpenAI } from '@langchain/openai'
-import { meta } from 'zod/v4/core'
-import { createCheckpointer } from './checkpointer'
+import { BaseMessage } from '@langchain/core/messages'
+import {
+	createChatGraph,
+	summarizeContextMessages,
+	type ContextControl,
+} from './runtime/graph'
+import { createCheckpointer } from './storage/checkpointer'
 import {
 	DEFAULT_MOONSHOT_MODEL,
 	getLatestInputTokens,
 	getModelContextLimit,
 	type ContextUsage,
-} from './context_usage'
+} from './runtime/context_usage'
+import {
+	applyContextPatch,
+	createMessagesReset,
+	type ContextPatch,
+} from './runtime/context_patch'
 import { skills } from './skills'
 import { buildSkillsInstruction } from './skills/prompt'
 import { tools } from './tools'
@@ -46,13 +55,51 @@ function buildSystemPrompt(): string {
 		: realtimeInstructions
 }
 
-// Agent 负责根据模型输出决定是否调用 tools，并继续生成最终回答。
-const agent = createAgent({
+// 自定义 StateGraph 在模型调用前显式选择 Context，并保留标准工具调用循环。
+const agent = createChatGraph({
 	model,
 	tools,
 	systemPrompt: buildSystemPrompt(),
 	checkpointer,
 })
+
+function createThreadConfig(threadId: string) {
+	return {
+		configurable: {
+			thread_id: threadId,
+		},
+	}
+}
+
+export async function getChatMessages(threadId: string): Promise<BaseMessage[]> {
+	const snapshot = await agent.getState(createThreadConfig(threadId))
+	return snapshot.values.messages ?? []
+}
+
+export async function persistContextPatch(
+	threadId: string,
+	patch: ContextPatch,
+): Promise<void> {
+	const messages = await getChatMessages(threadId)
+	await agent.updateState(createThreadConfig(threadId), {
+		messages: createMessagesReset(applyContextPatch(messages, patch)),
+	})
+}
+
+export async function seedChatSession(
+	threadId: string,
+	messages: BaseMessage[],
+): Promise<void> {
+	await agent.updateState(createThreadConfig(threadId), {
+		messages: createMessagesReset(messages),
+	})
+}
+
+export async function summarizeMessages(
+	messages: BaseMessage[],
+): Promise<string> {
+	return summarizeContextMessages(model, messages)
+}
 
 type ToolEvent = {
 	name: string
@@ -74,6 +121,7 @@ export interface AgentRunResult {
  * @param {Function} onToken   - 每个 token 到来时的回调 (token: string) => void
  * @param {string} threadId    - 会话 ID，相同 ID 会续接当前进程内的历史记录
  * @param {AbortSignal} signal - 用于取消当前 Agent 请求的信号
+ * @param {ContextControl} contextControl - 可选的单轮或持久 Context 修改
  * @returns {Promise<AgentRunResult>} 完整的 AI 回复文本与最终模型请求的 context 用量
  */
 export async function runAgentStream(
@@ -82,16 +130,18 @@ export async function runAgentStream(
 	threadId: string = 'default-session',
 	signal?: AbortSignal,
 	onToolEvent?: (event: ToolEvent) => void,
+	contextControl?: ContextControl,
 ): Promise<AgentRunResult> {
-	const config = {
-		configurable: {
-			thread_id: threadId,
-		},
-	}
+	const config = createThreadConfig(threadId)
 
 	const stream = await agent.stream(
 		{ messages: [{ role: 'user', content: userMessage }] },
-		{ ...config, streamMode: 'messages', signal },
+		{
+			...config,
+			streamMode: 'messages',
+			signal,
+			context: { contextControl },
+		},
 	)
 
 	let fullResponse = ''

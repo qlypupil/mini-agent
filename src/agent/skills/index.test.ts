@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { discoverSkills } from './skills'
+import { discoverSkills } from './index'
 
 describe('discoverSkills', () => {
 	it('discovers valid nested skills and skips malformed metadata', () => {

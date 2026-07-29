@@ -8,6 +8,7 @@ export interface InteractiveCommandContext {
 	startNewSession: () => void
 	listSessions: () => Promise<string>
 	rewindSession: (threadId: string) => Promise<boolean>
+	manageContext?: (rawArgs: string) => Promise<string>
 	write: (message: string) => void
 }
 
@@ -93,6 +94,18 @@ const commands: Record<string, InteractiveCommandHandler> = {
 			context.write(`已恢复会话: ${threadId}`)
 		} catch (error) {
 			context.write(`恢复会话失败: ${(error as Error).message}`)
+		}
+	},
+	context: async (command, context) => {
+		if (!context.manageContext) {
+			context.write('当前环境不支持 Context 管理。')
+			return
+		}
+
+		try {
+			context.write(await context.manageContext(command.rawArgs))
+		} catch (error) {
+			context.write(`Context 操作失败: ${(error as Error).message}`)
 		}
 	},
 }

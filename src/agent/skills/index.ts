@@ -10,7 +10,7 @@ export type Skill = {
 }
 
 // ts-node 开发与 dist 运行时都从 agent 目录旁的 skills/ 扫描内置 SKILL.md。
-const SKILLS_DIRECTORY = join(__dirname, 'skills')
+const SKILLS_DIRECTORY = __dirname
 
 function findSkillFiles(directory: string): string[] {
 	if (!existsSync(directory)) {

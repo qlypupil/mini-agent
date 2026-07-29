@@ -2,7 +2,7 @@ import {
 	createInteractiveCommandHandler,
 	handleInteractiveCommand,
 	parseInteractiveCommand,
-} from './interactive_command'
+} from './commands'
 
 describe('parseInteractiveCommand', () => {
 	it('keeps both tokenized and raw arguments for future command syntaxes', () => {
@@ -117,5 +117,27 @@ describe('handleInteractiveCommand', () => {
 		})
 
 		expect(write).toHaveBeenCalledWith('skill=planner daily plan')
+	})
+
+	it('handles /context locally and preserves its raw arguments', async () => {
+		const manageContext = jest.fn().mockResolvedValue('Context 已更新')
+		const write = jest.fn()
+
+		const handled = await handleInteractiveCommand(
+			'/context replace 2 translated English text',
+			{
+				startNewSession: jest.fn(),
+				listSessions: jest.fn(),
+				rewindSession: jest.fn(),
+				manageContext,
+				write,
+			},
+		)
+
+		expect(handled).toBe(true)
+		expect(manageContext).toHaveBeenCalledWith(
+			'replace 2 translated English text',
+		)
+		expect(write).toHaveBeenCalledWith('Context 已更新')
 	})
 })

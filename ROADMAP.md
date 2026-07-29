@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-项目初始化完成，等待业务功能定义。
+终端 Agent 基础能力与手动 Context 管理已完成，等待业务功能定义。
 
 ## 已完成
 
@@ -40,7 +40,7 @@
 - 接入 Agent Skills 发现、模型目录披露与按需 `load_skill` 激活机制。
 - 默认模型切换为通用 Agent 模型 `kimi-k2.6`。
 - 构建时复制内置 `SKILL.md` 到 `dist`，并限制 npm 发布包内容，支持全局安装运行。
-- 将 skills / tools 注册入口提升为 `src/agent/skills.ts` 与 `src/agent/tools.ts`。
+- 通过 `src/agent/skills/index.ts` 与 `src/agent/tools/index.ts` 集中维护 skills / tools 注册入口。
 - 新增本机 `python3` 执行的 `run_py` 工具及单元测试。
 - 将 npm 包名与全局 CLI 命令重命名为 `termclaw`，避免与已占用的 `miniagent` 冲突。
 - 使用 chalk 为 CLI 提示符、工具状态与 skill 诊断日志上色，提升终端可读性。
@@ -53,6 +53,11 @@
 - 使用 `cli-table3` 渲染 `/sessions` 会话列表，提升终端表格可读性。
 - 每轮成功回复后显示最终模型请求的 context token、模型上下文上限与占比。
 - Context 用量达到 80% 时警告即将压缩 Context 可能丢失信息，并建议通过 `/new` 开启新会话。
+- 将 Agent 执行迁移至自定义 LangGraph StateGraph，显式维护 `apply_context → model_request → tools` 循环。
+- 新增 `/context` 手动管理命令，支持查看、替换、删除、摘要、载入摘要文件与修改预览。
+- 支持 Context 修改仅应用下一轮、永久写入当前会话或基于修改结果创建分支会话。
+- Context 摘要使用不绑定 checkpointer 的独立模型调用，并保护 AI 工具调用与 ToolMessage 的完整配对。
+- 将 `src/agent` 平铺模块按 `runtime`、`cli`、`storage`、`skills` 与 `tools` 职责归档，顶层仅保留 Agent API、CLI 入口与环境变量加载。
 
 ## 进行中
 
@@ -87,7 +92,7 @@
 - Skills 发现、目录生成和 `load_skill` 单元测试通过（11 个测试套件、39 条测试）；默认模型切换为 `kimi-k2.6` 后 CLI 发送 `hi` 并收到正常回复。
 - Skills 构建资源复制、运行时专用构建配置与 npm 打包范围调整完成；构建产物可在外部工作目录发现内置 skills，打包预览仅包含运行时文件与 `SKILL.md`。
 - 构建后恢复 `dist/agent/cli.js` 可执行权限，保证 `npm link` 的 `termclaw` 软链接可运行。
-- skills / tools 入口提升为 `skills.ts` / `tools.ts` 后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（11 个测试套件、39 条测试）；构建产物仍发现内置 skills 并注册 `load_skill`。
+- skills / tools 注册入口整理后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（11 个测试套件、39 条测试）；构建产物仍发现内置 skills 并注册 `load_skill`。
 - `run_py` 单元测试、类型检查与构建通过（12 个测试套件、48 条测试）；真实 `termclaw` 调用 `run_py` 执行 `print(2 + 3)`，返回 `5`。
 - 包名与 CLI 重命名为 `termclaw` 后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过；`termclaw --help` / `--version` 正常。
 - SQLite checkpointer 单元测试、类型检查与构建通过（13 个测试套件、49 条测试）；两次独立 `termclaw` 进程成功保存并恢复 token `cobalt-4729`。
@@ -99,3 +104,6 @@
 - `cli-table3` 表格渲染后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过；构建产物 `/sessions` 显示终端边框表格。
 - Context 用量显示的单元测试、类型检查与构建通过（16 个测试套件、67 条测试）；构建产物回复 `hi` 后显示 `1,830 / 262,144 tokens (0.70%)`。
 - Context 用量达到 80% 的告警边界测试通过；`pnpm typecheck` 与 `pnpm test --runInBand` 通过（16 个测试套件、69 条测试）。
+- 自定义 StateGraph、ContextPatch、Context 会话管理、独立摘要与命令分发测试通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（20 个测试套件、85 条测试）。
+- 构建产物通过真实 Moonshot 流式回归，`hi` 正常返回回复并显示 `1,830 / 262,144 tokens (0.70%)`；本地 `/context` 帮助命令未调用 AI 并正确输出全部子命令。
+- Agent 目录整理后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（19 个测试套件、85 条测试）；构建产物保持 `dist/agent/cli.js` 入口并可正常显示帮助。
