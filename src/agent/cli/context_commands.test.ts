@@ -28,14 +28,14 @@ function createHarness() {
 }
 
 describe('ContextSessionManager', () => {
-	it('stages, previews, and consumes a one-shot replacement', async () => {
+	it('keeps a one-shot replacement until the request is completed', async () => {
 		const { manager } = createHarness()
 
 		await expect(manager.handle('replace 1 Hello')).resolves.toContain('已暂存')
 		await expect(manager.handle('preview')).resolves.toContain('Hello')
 		await expect(manager.handle('apply once')).resolves.toContain('下一轮请求')
 
-		const control = manager.takeNextContextControl('thread-1')
+		const control = manager.peekNextContextControl('thread-1')
 		expect(control).toEqual({
 			mode: 'once',
 			patch: {
@@ -44,7 +44,12 @@ describe('ContextSessionManager', () => {
 				],
 			},
 		})
-		expect(manager.takeNextContextControl('thread-1')).toBeUndefined()
+
+		// 请求失败时不确认消费，同一修改仍可用于下一次重试。
+		expect(manager.peekNextContextControl('thread-1')).toEqual(control)
+
+		manager.completeNextContextControl('thread-1')
+		expect(manager.peekNextContextControl('thread-1')).toBeUndefined()
 	})
 
 	it('applies a persistent summary without waiting for another chat request', async () => {

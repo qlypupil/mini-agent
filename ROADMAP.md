@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力与手动 Context 管理已完成，等待业务功能定义。
+终端 Agent 基础能力、手动与自动 Context 管理及会话内模型切换已完成，等待业务功能定义。
 
 ## 已完成
 
@@ -57,7 +57,14 @@
 - 新增 `/context` 手动管理命令，支持查看、替换、删除、摘要、载入摘要文件与修改预览。
 - 支持 Context 修改仅应用下一轮、永久写入当前会话或基于修改结果创建分支会话。
 - Context 摘要使用不绑定 checkpointer 的独立模型调用，并保护 AI 工具调用与 ToolMessage 的完整配对。
+- 修复 `once` Context 在模型请求失败或取消时被提前消费的问题，仅在本轮 Agent 请求成功结束后清除暂存修改。
+- 新增 80% Context 自动压缩：保留最近 6 条及完整工具消息组，使用独立模型调用生成累计摘要，并在 SQLite checkpointer 之外按 thread 持久化摘要、已压缩消息和压缩次数。
+- 自动压缩从下一轮模型请求开始通过 StateGraph runtime context 生效；压缩失败保留原历史并允许重试，累计达到 3 次时继续压缩并强烈建议 `/new`。
 - 将 `src/agent` 平铺模块按 `runtime`、`cli`、`storage`、`skills` 与 `tools` 职责归档，顶层仅保留 Agent API、CLI 入口与环境变量加载。
+- 新增 Kimi、DeepSeek 模型注册表与 `/model` 本地命令，支持在当前 CLI 进程中查看和切换后续对话、Context 摘要及自动压缩所用模型，不修改 SQLite 历史。
+- DeepSeek 默认接入官方 OpenAI 兼容接口与 `deepseek-v4-flash`，使用 1M context 上限并关闭 thinking mode，保持现有工具调用循环兼容。
+- 裸 `/model` 与 `/context` 支持无依赖的方向键交互菜单；保留完整命令和非 TTY 回退，并支持 Context 参数输入及应用方式二级菜单。
+- 自动压缩判定恢复使用模型正常 Context 上限：Kimi 为 262,144，DeepSeek 为 1,048,576。
 
 ## 进行中
 
@@ -107,3 +114,9 @@
 - 自定义 StateGraph、ContextPatch、Context 会话管理、独立摘要与命令分发测试通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（20 个测试套件、85 条测试）。
 - 构建产物通过真实 Moonshot 流式回归，`hi` 正常返回回复并显示 `1,830 / 262,144 tokens (0.70%)`；本地 `/context` 帮助命令未调用 AI 并正确输出全部子命令。
 - Agent 目录整理后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（19 个测试套件、85 条测试）；构建产物保持 `dist/agent/cli.js` 入口并可正常显示帮助。
+- `once` Context 改为请求成功后确认消费；失败重试回归测试、`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（19 个测试套件、85 条测试）。
+- 自动 Context 压缩、累计摘要、工具消息边界、独立缓存及 StateGraph 非持久化投影回归测试通过；`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（21 个测试套件、95 条测试）。
+- Kimi / DeepSeek 动态模型、`/model` 命令、DeepSeek context 上限及 StateGraph runtime 模型覆盖测试通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（22 个测试套件、102 条测试）。构建产物可显示当前 Kimi，未配置 DeepSeek Key 时拒绝切换且不发起模型请求。
+- DeepSeek 官方 `/models` 接口返回 HTTP 200；构建产物通过 `/model deepseek` 切换至 `deepseek-v4-flash` 并完成真实流式回复，usage 显示 `2,530 / 1,048,576 tokens (0.24%)`。
+- `/model`、`/context` 交互菜单及非 TTY 回退测试通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（23 个测试套件、110 条测试）。构建产物通过伪终端验证方向键模型切换、Context 一级菜单、参数输入、应用方式二级菜单和退出后的 readline 恢复。
+- 恢复 Kimi、DeepSeek 正常 Context 上限后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（23 个测试套件、110 条测试）。

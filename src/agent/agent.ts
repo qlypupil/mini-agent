@@ -1,18 +1,29 @@
 import './env'
-import { ChatOpenAI } from '@langchain/openai'
+import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { BaseMessage } from '@langchain/core/messages'
 import {
 	createChatGraph,
-	summarizeContextMessages,
 	type ContextControl,
 } from './runtime/graph'
-import { createCheckpointer } from './storage/checkpointer'
 import {
-	DEFAULT_MOONSHOT_MODEL,
+	compressContextMessages,
+	summarizeContextMessages,
+	type ContextCompressionResult,
+} from './runtime/context'
+import { createCheckpointer } from './storage/checkpointer'
+import { ContextCompressionStore } from './storage/context_compression'
+import {
 	getLatestInputTokens,
 	getModelContextLimit,
 	type ContextUsage,
 } from './runtime/context_usage'
+import {
+	createChatModel,
+	formatModelSelection,
+	getDefaultModelProvider,
+	getModelMetadata,
+	type ModelProvider,
+} from './runtime/models'
 import {
 	applyContextPatch,
 	createMessagesReset,
@@ -22,28 +33,28 @@ import { skills } from './skills'
 import { buildSkillsInstruction } from './skills/prompt'
 import { tools } from './tools'
 
-// Moonshot 兼容 OpenAI Chat Completions API，因此复用 ChatOpenAI 客户端。
-const MOONSHOT_API_KEY = process.env.MOONSHOT_API_KEY
-// 允许部署环境替换兼容网关，同时保持未配置时的原有 Moonshot 地址。
-const MOONSHOT_BASE_URL =
-	process.env.MOONSHOT_BASE_URL ?? 'https://api.moonshot.cn/v1'
-const MOONSHOT_MODEL = process.env.MOONSHOT_MODEL ?? DEFAULT_MOONSHOT_MODEL
+const modelCache = new Map<ModelProvider, BaseChatModel>()
 
-if (!MOONSHOT_API_KEY) {
-	throw new Error('MOONSHOT_API_KEY is not set')
+function getChatModel(provider: ModelProvider): BaseChatModel {
+	const cachedModel = modelCache.get(provider)
+	if (cachedModel) return cachedModel
+
+	const model = createChatModel(provider)
+	modelCache.set(provider, model)
+	return model
 }
 
-const model = new ChatOpenAI({
-	model: MOONSHOT_MODEL,
-	apiKey: MOONSHOT_API_KEY,
-	configuration: {
-		baseURL: MOONSHOT_BASE_URL,
-	},
-	streaming: true,
-})
+export function ensureModelConfigured(provider: ModelProvider): void {
+	getChatModel(provider)
+}
+
+export function describeModel(provider: ModelProvider): string {
+	return formatModelSelection(provider)
+}
 
 // SQLite checkpointer 按 threadId 将会话状态保存到当前目录的 .data/checkpointer.db。
 const checkpointer = createCheckpointer()
+const contextCompressionStore = new ContextCompressionStore()
 
 function buildSystemPrompt(): string {
 	const realtimeInstructions =
@@ -57,7 +68,6 @@ function buildSystemPrompt(): string {
 
 // 自定义 StateGraph 在模型调用前显式选择 Context，并保留标准工具调用循环。
 const agent = createChatGraph({
-	model,
 	tools,
 	systemPrompt: buildSystemPrompt(),
 	checkpointer,
@@ -84,12 +94,14 @@ export async function persistContextPatch(
 	await agent.updateState(createThreadConfig(threadId), {
 		messages: createMessagesReset(applyContextPatch(messages, patch)),
 	})
+	await contextCompressionStore.clear(threadId)
 }
 
 export async function seedChatSession(
 	threadId: string,
 	messages: BaseMessage[],
 ): Promise<void> {
+	await contextCompressionStore.clear(threadId)
 	await agent.updateState(createThreadConfig(threadId), {
 		messages: createMessagesReset(messages),
 	})
@@ -97,8 +109,28 @@ export async function seedChatSession(
 
 export async function summarizeMessages(
 	messages: BaseMessage[],
+	modelProvider: ModelProvider = getDefaultModelProvider(),
 ): Promise<string> {
-	return summarizeContextMessages(model, messages)
+	return summarizeContextMessages(getChatModel(modelProvider), messages)
+}
+
+export async function compressChatContext(
+	threadId: string,
+	modelProvider: ModelProvider = getDefaultModelProvider(),
+): Promise<ContextCompressionResult> {
+	const [messages, previous] = await Promise.all([
+		getChatMessages(threadId),
+		contextCompressionStore.get(threadId),
+	])
+	const result = await compressContextMessages(
+		getChatModel(modelProvider),
+		messages,
+		previous,
+	)
+	if (result.compressed && result.compression) {
+		await contextCompressionStore.set(threadId, result.compression)
+	}
+	return result
 }
 
 type ToolEvent = {
@@ -122,6 +154,7 @@ export interface AgentRunResult {
  * @param {string} threadId    - 会话 ID，相同 ID 会续接当前进程内的历史记录
  * @param {AbortSignal} signal - 用于取消当前 Agent 请求的信号
  * @param {ContextControl} contextControl - 可选的单轮或持久 Context 修改
+ * @param {ModelProvider} modelProvider - 本轮请求使用的模型提供商
  * @returns {Promise<AgentRunResult>} 完整的 AI 回复文本与最终模型请求的 context 用量
  */
 export async function runAgentStream(
@@ -131,8 +164,14 @@ export async function runAgentStream(
 	signal?: AbortSignal,
 	onToolEvent?: (event: ToolEvent) => void,
 	contextControl?: ContextControl,
+	modelProvider: ModelProvider = getDefaultModelProvider(),
 ): Promise<AgentRunResult> {
 	const config = createThreadConfig(threadId)
+	const model = getChatModel(modelProvider)
+	const modelMetadata = getModelMetadata(modelProvider)
+	const contextCompression = contextControl
+		? undefined
+		: await contextCompressionStore.get(threadId).catch(() => undefined)
 
 	const stream = await agent.stream(
 		{ messages: [{ role: 'user', content: userMessage }] },
@@ -140,7 +179,7 @@ export async function runAgentStream(
 			...config,
 			streamMode: 'messages',
 			signal,
-			context: { contextControl },
+			context: { model, contextControl, contextCompression },
 		},
 	)
 
@@ -211,9 +250,9 @@ export async function runAgentStream(
 	return {
 		response: fullResponse,
 		contextUsage: {
-			model: MOONSHOT_MODEL,
+			model: modelMetadata.model,
 			inputTokens: getLatestInputTokens(usageMetadata),
-			contextLimit: getModelContextLimit(MOONSHOT_MODEL),
+			contextLimit: getModelContextLimit(modelMetadata.model),
 		},
 	}
 }

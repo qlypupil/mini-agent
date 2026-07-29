@@ -1,8 +1,6 @@
 import { BaseChatModel, BindToolsInput } from '@langchain/core/language_models/chat_models'
 import {
-	AIMessage,
 	BaseMessage,
-	HumanMessage,
 	SystemMessage,
 } from '@langchain/core/messages'
 import { StructuredToolInterface } from '@langchain/core/tools'
@@ -18,9 +16,12 @@ import { z } from 'zod'
 import {
 	applyContextPatch,
 	createMessagesReset,
-	formatMessagesForSummary,
 	type ContextPatch,
 } from './context_patch'
+import {
+	applyContextCompression,
+	type ContextCompression,
+} from './context'
 import { createCheckpointer } from '../storage/checkpointer'
 
 export type ContextApplyMode = 'once' | 'persist'
@@ -35,16 +36,18 @@ export const ChatState = new StateSchema({
 })
 
 const ChatContext = z.object({
+	model: z.custom<BaseChatModel>().optional(),
 	contextControl: z
 		.object({
 			mode: z.enum(['once', 'persist']),
 			patch: z.custom<ContextPatch>(),
 		})
 		.optional(),
+	contextCompression: z.custom<ContextCompression>().optional(),
 })
 
 export interface CreateChatGraphOptions {
-	model: BaseChatModel
+	model?: BaseChatModel
 	tools: StructuredToolInterface[]
 	systemPrompt: string
 	checkpointer: ReturnType<typeof createCheckpointer>
@@ -56,12 +59,6 @@ export function createChatGraph({
 	systemPrompt,
 	checkpointer,
 }: CreateChatGraphOptions) {
-	if (!model.bindTools) {
-		throw new Error('The configured chat model does not support tool binding.')
-	}
-
-	const modelWithTools = model.bindTools(tools as BindToolsInput[])
-
 	return new StateGraph(ChatState, ChatContext)
 		.addNode('apply_context', (state, runtime) => {
 			const control = runtime.context?.contextControl
@@ -74,10 +71,20 @@ export function createChatGraph({
 			}
 		})
 		.addNode('model_request', async (state, runtime) => {
+			const requestModel = runtime.context?.model ?? model
+			if (!requestModel) {
+				throw new Error('No chat model was configured for this request.')
+			}
+			if (!requestModel.bindTools) {
+				throw new Error('The configured chat model does not support tool binding.')
+			}
+			const modelWithTools = requestModel.bindTools(tools as BindToolsInput[])
 			const control = runtime.context?.contextControl
-			const messages =
-				control?.mode === 'once'
-					? applyContextPatch(state.messages, control.patch)
+			const compression = runtime.context?.contextCompression
+			const messages = control?.mode === 'once'
+				? applyContextPatch(state.messages, control.patch)
+				: compression
+					? applyContextCompression(state.messages, compression)
 					: state.messages
 			const response = await modelWithTools.invoke(
 				[new SystemMessage(systemPrompt), ...messages],
@@ -92,36 +99,4 @@ export function createChatGraph({
 		.addConditionalEdges('model_request', toolsCondition, ['tools', END])
 		.addEdge('tools', 'model_request')
 		.compile({ checkpointer })
-}
-
-function stringifySummaryContent(content: AIMessage['content']): string {
-	if (typeof content === 'string') return content.trim()
-	if (!Array.isArray(content)) return ''
-
-	return content
-		.map((part) => {
-			if (typeof part === 'string') return part
-			if ('text' in part && typeof part.text === 'string') return part.text
-			return ''
-		})
-		.join('')
-		.trim()
-}
-
-export async function summarizeContextMessages(
-	model: BaseChatModel,
-	messages: BaseMessage[],
-): Promise<string> {
-	if (messages.length === 0) throw new Error('没有可摘要的消息。')
-
-	const response = await model.invoke([
-		new SystemMessage(
-			'Create a concise plain-text summary of the supplied conversation. Preserve concrete facts, user requirements, decisions, unresolved questions, and important tool results. Do not add commentary or markdown headings.',
-		),
-		new HumanMessage(formatMessagesForSummary(messages)),
-	])
-	const summary = stringifySummaryContent(response.content)
-	if (!summary) throw new Error('模型返回了空摘要。')
-
-	return summary
 }

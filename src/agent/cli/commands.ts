@@ -9,6 +9,10 @@ export interface InteractiveCommandContext {
 	listSessions: () => Promise<string>
 	rewindSession: (threadId: string) => Promise<boolean>
 	manageContext?: (rawArgs: string) => Promise<string>
+	chooseContextAction?: () => Promise<string | undefined>
+	getCurrentModel?: () => string
+	chooseModel?: () => Promise<string | undefined>
+	switchModel?: (model: string) => string
 	write: (message: string) => void
 }
 
@@ -103,9 +107,57 @@ const commands: Record<string, InteractiveCommandHandler> = {
 		}
 
 		try {
-			context.write(await context.manageContext(command.rawArgs))
+			let rawArgs = command.rawArgs
+			if (!rawArgs && context.chooseContextAction) {
+				const selectedAction = await context.chooseContextAction()
+				if (!selectedAction) {
+					context.write('已取消 Context 操作。')
+					return
+				}
+				rawArgs = selectedAction
+			}
+
+			context.write(await context.manageContext(rawArgs))
 		} catch (error) {
 			context.write(`Context 操作失败: ${(error as Error).message}`)
+		}
+	},
+	model: async (command, context) => {
+		if (!context.getCurrentModel || !context.switchModel) {
+			context.write('当前环境不支持模型切换。')
+			return
+		}
+
+		if (command.args.length === 0) {
+			if (context.chooseModel) {
+				try {
+					const selectedModel = await context.chooseModel()
+					if (!selectedModel) {
+						context.write('已取消模型切换。')
+						return
+					}
+					context.write(`已切换模型: ${context.switchModel(selectedModel)}`)
+				} catch (error) {
+					context.write(`模型切换失败: ${(error as Error).message}`)
+				}
+				return
+			}
+
+			context.write(
+				`当前模型: ${context.getCurrentModel()}\n可选模型: kimi, deepseek\n切换用法: /model <kimi|deepseek>`,
+			)
+			return
+		}
+
+		if (command.args.length !== 1) {
+			context.write('用法: /model <kimi|deepseek>')
+			return
+		}
+
+		try {
+			context.write(`已切换模型: ${context.switchModel(command.args[0])}`)
+		} catch (error) {
+			context.write(`模型切换失败: ${(error as Error).message}`)
 		}
 	},
 }

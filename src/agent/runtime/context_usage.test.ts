@@ -1,14 +1,15 @@
 import {
-	DEFAULT_MOONSHOT_MODEL,
 	formatContextUsage,
 	getLatestInputTokens,
 	getModelContextLimit,
 	shouldWarnContextUsage,
 } from './context_usage'
+import { DEFAULT_DEEPSEEK_MODEL, DEFAULT_KIMI_MODEL } from './models'
 
 describe('getModelContextLimit', () => {
 	it('returns the known context limit for the default model', () => {
-		expect(getModelContextLimit(DEFAULT_MOONSHOT_MODEL)).toBe(262_144)
+		expect(getModelContextLimit(DEFAULT_KIMI_MODEL)).toBe(262_144)
+		expect(getModelContextLimit(DEFAULT_DEEPSEEK_MODEL)).toBe(1_048_576)
 	})
 
 	it('leaves an unknown model limit undefined', () => {
@@ -36,7 +37,7 @@ describe('formatContextUsage', () => {
 	it('renders token count, limit, and percentage', () => {
 		expect(
 			formatContextUsage({
-				model: DEFAULT_MOONSHOT_MODEL,
+				model: DEFAULT_KIMI_MODEL,
 				inputTokens: 13_107,
 				contextLimit: 262_144,
 			}),
@@ -54,7 +55,7 @@ describe('shouldWarnContextUsage', () => {
 	it('warns when usage reaches 80 percent', () => {
 		expect(
 			shouldWarnContextUsage({
-				model: DEFAULT_MOONSHOT_MODEL,
+				model: DEFAULT_KIMI_MODEL,
 				inputTokens: 80,
 				contextLimit: 100,
 			}),
@@ -64,11 +65,11 @@ describe('shouldWarnContextUsage', () => {
 	it('does not warn below 80 percent or without complete usage data', () => {
 		expect(
 			shouldWarnContextUsage({
-				model: DEFAULT_MOONSHOT_MODEL,
+				model: DEFAULT_KIMI_MODEL,
 				inputTokens: 79,
 				contextLimit: 100,
 			}),
 		).toBe(false)
-		expect(shouldWarnContextUsage({ model: DEFAULT_MOONSHOT_MODEL })).toBe(false)
+		expect(shouldWarnContextUsage({ model: DEFAULT_KIMI_MODEL })).toBe(false)
 	})
 })

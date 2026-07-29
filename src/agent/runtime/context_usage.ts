@@ -1,7 +1,8 @@
-export const DEFAULT_MOONSHOT_MODEL = 'kimi-k2.6'
+import { DEFAULT_DEEPSEEK_MODEL, DEFAULT_KIMI_MODEL } from './models'
 
 const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-	'kimi-k2.6': 262_144,
+	[DEFAULT_KIMI_MODEL]: 262_144,
+	[DEFAULT_DEEPSEEK_MODEL]: 1_048_576,
 }
 
 const CONTEXT_USAGE_WARNING_THRESHOLD = 0.8

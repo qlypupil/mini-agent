@@ -5,7 +5,7 @@ import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages'
 import { fakeModel } from '@langchain/core/testing'
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { createChatGraph, summarizeContextMessages } from './graph'
+import { createChatGraph } from './graph'
 import { createCheckpointer } from '../storage/checkpointer'
 
 function createTestGraph(model = fakeModel(), testTools: Parameters<typeof createChatGraph>[0]['tools'] = []) {
@@ -25,6 +25,29 @@ function createTestGraph(model = fakeModel(), testTools: Parameters<typeof creat
 }
 
 describe('custom chat graph', () => {
+	it('uses the model supplied in runtime context for the current request', async () => {
+		const defaultModel = fakeModel().respond(new AIMessage('default'))
+		const runtimeModel = fakeModel().respond(new AIMessage('runtime'))
+		const { graph, checkpointer } = createTestGraph(defaultModel)
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('hello')] },
+			{
+				configurable: { thread_id: 'runtime-model-thread' },
+				context: {
+					model: runtimeModel,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(defaultModel.callCount).toBe(0)
+		expect(runtimeModel.callCount).toBe(1)
+		expect(result.messages.at(-1)?.content).toBe('runtime')
+		checkpointer.db.close()
+	})
+
 	it('uses a one-shot Context patch without replacing persisted history', async () => {
 		const model = fakeModel().respond(new AIMessage('done'))
 		const { graph, checkpointer } = createTestGraph(model)
@@ -38,6 +61,7 @@ describe('custom chat graph', () => {
 			{
 				...config,
 				context: {
+					model: undefined,
 					contextControl: {
 						mode: 'once' as const,
 						patch: {
@@ -49,6 +73,12 @@ describe('custom chat graph', () => {
 								},
 							],
 						},
+					},
+					contextCompression: {
+						summary: 'stale automatic summary',
+						compressedMessageIds: ['old-message'],
+						compressionCount: 1,
+						updatedAt: '2026-07-29T00:00:00.000Z',
 					},
 				},
 			},
@@ -81,6 +111,7 @@ describe('custom chat graph', () => {
 			{
 				...config,
 				context: {
+					model: undefined,
 					contextControl: {
 						mode: 'persist' as const,
 						patch: {
@@ -93,6 +124,7 @@ describe('custom chat graph', () => {
 							],
 						},
 					},
+					contextCompression: undefined,
 				},
 			},
 		)
@@ -101,6 +133,52 @@ describe('custom chat graph', () => {
 		expect(snapshot.values.messages.map((message: BaseMessage) => message.content)).toEqual([
 			'English text',
 			'继续',
+			'done',
+		])
+		checkpointer.db.close()
+	})
+
+	it('uses automatic compression without replacing checkpointed history', async () => {
+		const model = fakeModel().respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(model)
+		const config = { configurable: { thread_id: 'compression-thread' } }
+		const history = Array.from({ length: 8 }, (_, index) =>
+			index % 2 === 0
+				? new HumanMessage({ id: `message-${index + 1}`, content: `content-${index + 1}` })
+				: new AIMessage({ id: `message-${index + 1}`, content: `content-${index + 1}` }),
+		)
+		await graph.updateState(config, { messages: history })
+
+		await graph.invoke(
+			{ messages: [new HumanMessage({ id: 'current-message', content: 'continue' })] },
+			{
+				...config,
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: {
+						summary: 'compressed history',
+						compressedMessageIds: ['message-1', 'message-2'],
+						compressionCount: 1,
+						updatedAt: '2026-07-29T00:00:00.000Z',
+					},
+				},
+			},
+		)
+
+		const modelContents = model.calls[0].messages.map((message) => message.content)
+		expect(modelContents).toContain(
+			'Conversation summary (automatically compressed):\ncompressed history',
+		)
+		expect(modelContents).not.toContain('content-1')
+		expect(modelContents).not.toContain('content-2')
+		expect(modelContents).toContain('content-3')
+		expect(modelContents).toContain('continue')
+
+		const snapshot = await graph.getState(config)
+		expect(snapshot.values.messages.map((message: BaseMessage) => message.content)).toEqual([
+			...history.map((message) => message.content),
+			'continue',
 			'done',
 		])
 		checkpointer.db.close()
@@ -122,8 +200,12 @@ describe('custom chat graph', () => {
 		const result = await graph.invoke(
 			{ messages: [new HumanMessage('use the tool')] },
 			{
-				configurable: { thread_id: 'tool-thread' },
-				context: { contextControl: undefined },
+					configurable: { thread_id: 'tool-thread' },
+					context: {
+						model: undefined,
+						contextControl: undefined,
+					contextCompression: undefined,
+				},
 			},
 		)
 
@@ -140,7 +222,11 @@ describe('custom chat graph', () => {
 			{ messages: [new HumanMessage('hello')] },
 			{
 				configurable: { thread_id: 'stream-thread' },
-				context: { contextControl: undefined },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
 				streamMode: 'messages',
 			},
 		)
@@ -152,30 +238,5 @@ describe('custom chat graph', () => {
 
 		expect(nodeNames).toContain('model_request')
 		checkpointer.db.close()
-	})
-})
-
-describe('summarizeContextMessages', () => {
-	it('summarizes selected messages without using a checkpointer', async () => {
-		const model = fakeModel().respond(new AIMessage(' concise summary '))
-
-		await expect(
-			summarizeContextMessages(model, [
-				new HumanMessage('first request'),
-				new AIMessage('first answer'),
-			]),
-		).resolves.toBe('concise summary')
-
-		expect(model.calls[0].messages).toHaveLength(2)
-		expect(model.calls[0].messages[1].content).toContain('first request')
-		expect(model.calls[0].messages[1].content).toContain('first answer')
-	})
-
-	it('rejects an empty model summary', async () => {
-		const model = fakeModel().respond(new AIMessage(''))
-
-		await expect(
-			summarizeContextMessages(model, [new HumanMessage('message')]),
-		).rejects.toThrow('模型返回了空摘要。')
 	})
 })

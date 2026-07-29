@@ -48,7 +48,7 @@ export class ContextSessionManager {
 		this.pending = undefined
 	}
 
-	takeNextContextControl(threadId: string): ContextControl | undefined {
+	peekNextContextControl(threadId: string): ContextControl | undefined {
 		if (
 			!this.pending ||
 			this.pending.threadId !== threadId ||
@@ -57,12 +57,19 @@ export class ContextSessionManager {
 			return undefined
 		}
 
-		const control: ContextControl = {
+		return {
 			mode: 'once',
 			patch: this.pending.patch,
 		}
-		this.pending = undefined
-		return control
+	}
+
+	completeNextContextControl(threadId: string): void {
+		if (
+			this.pending?.threadId === threadId &&
+			this.pending.readyOnce
+		) {
+			this.pending = undefined
+		}
 	}
 
 	private async getCurrentMessages(): Promise<BaseMessage[]> {

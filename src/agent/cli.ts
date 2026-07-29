@@ -5,6 +5,9 @@ import { randomUUID } from 'node:crypto'
 import chalk from 'chalk'
 import { Command } from 'commander'
 import {
+	compressChatContext,
+	describeModel,
+	ensureModelConfigured,
 	getChatMessages,
 	persistContextPatch,
 	runAgentStream,
@@ -14,7 +17,15 @@ import {
 import { printStartupBanner } from './cli/banner'
 import { ContextSessionManager } from './cli/context_commands'
 import { handleInteractiveCommand } from './cli/commands'
+import { selectMenu, type SelectMenuOption } from './cli/select_menu'
 import { formatContextUsage, shouldWarnContextUsage } from './runtime/context_usage'
+import {
+	getDefaultModelProvider,
+	getModelMetadata,
+	MODEL_PROVIDERS,
+	resolveModelProvider,
+	type ModelProvider,
+} from './runtime/models'
 import {
 	formatSessionsTable,
 	hasChatSession,
@@ -30,6 +41,7 @@ const packageMetadata = require('../../package.json') as {
 
 // 每次 CLI 启动创建独立会话，避免 SQLite 中的历史消息混入新的终端对话。
 let threadId: string = randomUUID()
+let modelProvider: ModelProvider = getDefaultModelProvider()
 
 const contextSession = new ContextSessionManager({
 	getThreadId: () => threadId,
@@ -39,7 +51,7 @@ const contextSession = new ContextSessionManager({
 	getMessages: getChatMessages,
 	persistPatch: persistContextPatch,
 	seedSession: seedChatSession,
-	summarize: summarizeMessages,
+	summarize: (messages) => summarizeMessages(messages, modelProvider),
 	readSummaryFile: readFileTool,
 })
 
@@ -54,10 +66,20 @@ function createInterface(): readline.Interface {
 	})
 }
 
-const rl = createInterface()
+let rl = createInterface()
 
 let activeController: AbortController | undefined
 let inputClosed = false
+let stopKeyboardControls = () => {}
+
+function handleInputClose(): void {
+	inputClosed = true
+	stopKeyboardControls()
+}
+
+function attachInputCloseHandler(): void {
+	rl.once('close', handleInputClose)
+}
 
 // 整个 CLI 生命周期内保持 raw mode，避免在 readline 回调期间切换模式而重复回显输入。
 function setupKeyboardControls(): () => void {
@@ -92,6 +114,89 @@ function prompt(question: string): Promise<string> {
 	})
 }
 
+async function showSelectMenu<T extends string>(
+	title: string,
+	options: SelectMenuOption<T>[],
+	initialIndex = 0,
+): Promise<T | undefined> {
+	// readline 自己会消费方向键；菜单期间临时关闭，完成后再恢复行输入。
+	rl.off('close', handleInputClose)
+	rl.close()
+
+	try {
+		return await selectMenu(title, options, initialIndex)
+	} finally {
+		if (!inputClosed) {
+			rl = createInterface()
+			attachInputCloseHandler()
+		}
+	}
+}
+
+async function chooseModel(): Promise<string | undefined> {
+	const options = MODEL_PROVIDERS.map((provider) => {
+		const metadata = getModelMetadata(provider)
+		return {
+			value: provider,
+			label: `${provider === 'kimi' ? 'Kimi' : 'DeepSeek'}  ${metadata.model}${provider === modelProvider ? '（当前）' : ''}`,
+		}
+	})
+
+	return showSelectMenu(
+		'选择模型：',
+		options,
+		MODEL_PROVIDERS.indexOf(modelProvider),
+	)
+}
+
+async function promptRequired(question: string): Promise<string | undefined> {
+	const answer = (await prompt(chalk.green(question))).trim()
+	return answer || undefined
+}
+
+async function chooseContextAction(): Promise<string | undefined> {
+	const action = await showSelectMenu('选择 Context 操作：', [
+		{ label: '查看当前记录', value: 'show' },
+		{ label: '预览暂存修改', value: 'preview' },
+		{ label: '压缩指定记录', value: 'summarize' },
+		{ label: '替换指定记录', value: 'replace' },
+		{ label: '删除指定记录', value: 'remove' },
+		{ label: '载入摘要文件', value: 'load-summary' },
+		{ label: '应用暂存修改', value: 'apply' },
+		{ label: '清除暂存修改', value: 'cancel' },
+		{ label: '返回', value: 'back' },
+	])
+
+	if (!action || action === 'back') return undefined
+	if (['show', 'preview', 'cancel'].includes(action)) return action
+
+	if (action === 'apply') {
+		const mode = await showSelectMenu('选择应用方式：', [
+			{ label: '仅下一轮请求', value: 'once' },
+			{ label: '永久写入当前会话', value: 'persist' },
+			{ label: '创建分支会话', value: 'fork' },
+			{ label: '返回', value: 'back' },
+		])
+		return !mode || mode === 'back' ? undefined : `apply ${mode}`
+	}
+
+	const selector = await promptRequired(
+		action === 'replace'
+			? '输入要替换的记录序号：'
+			: '输入记录序号或范围（例如 1-6）：',
+	)
+	if (!selector) return undefined
+
+	if (action === 'summarize' || action === 'remove') {
+		return `${action} ${selector}`
+	}
+
+	const detail = await promptRequired(
+		action === 'replace' ? '输入替换后的内容：' : '输入摘要文件路径：',
+	)
+	return detail ? `${action} ${selector} ${detail}` : undefined
+}
+
 async function chat(userInput: string): Promise<void> {
 	// write 不自动换行，使每个流式 token 能连续显示；AI 正文保持默认颜色。
 	process.stdout.write(`\n${aiLabel()}`)
@@ -99,7 +204,9 @@ async function chat(userInput: string): Promise<void> {
 	// 每轮请求独享控制器，避免 ESC 取消到下一轮对话。
 	const controller = new AbortController()
 	activeController = controller
-	const contextControl = contextSession.takeNextContextControl(threadId)
+	const requestThreadId = threadId
+	const requestModelProvider = modelProvider
+	const contextControl = contextSession.peekNextContextControl(requestThreadId)
 
 	try {
 		const result = await runAgentStream(
@@ -107,7 +214,7 @@ async function chat(userInput: string): Promise<void> {
 			(token: string) => {
 				process.stdout.write(token)
 			},
-			threadId,
+			requestThreadId,
 			controller.signal,
 			(event) => {
 				if (event.status === 'started') {
@@ -132,14 +239,45 @@ async function chat(userInput: string): Promise<void> {
 				)
 			},
 			contextControl,
+			requestModelProvider,
 		)
+		if (contextControl) {
+			contextSession.completeNextContextControl(requestThreadId)
+		}
 		process.stdout.write(
 			`\n${chalk.gray(formatContextUsage(result.contextUsage))}\n\n`,
 		)
 		if (shouldWarnContextUsage(result.contextUsage)) {
 			process.stdout.write(
-				`${chalk.yellow('警告：Context window 接近大模型接口上限，即将压缩 Context，可能会丢失信息。')}\n${chalk.yellow('建议输入 /new 命令开启新会话。')}\n\n`,
+				`${chalk.yellow('警告：Context window 接近大模型接口上限，正在自动压缩 Context，可能会丢失信息。')}\n`,
 			)
+
+			try {
+				const compression = await compressChatContext(
+					requestThreadId,
+					requestModelProvider,
+				)
+				if (compression.compressed) {
+					process.stdout.write(
+						`${chalk.green(`Context 压缩完成：本次压缩 ${compression.newlyCompressedMessageCount} 条消息，保留最近 ${compression.retainedMessageCount} 条消息，累计压缩 ${compression.compressionCount} 次。`)}\n${chalk.gray('压缩结果将在下一轮对话中使用，SQLite 原始聊天记录未修改。')}\n`,
+					)
+				} else {
+					process.stdout.write(
+						`${chalk.yellow(`当前没有新的可压缩历史，已保留最近 ${compression.retainedMessageCount} 条消息。`)}\n`,
+					)
+				}
+
+				if (compression.compressionCount >= 3 || !compression.compressed) {
+					process.stdout.write(
+						`${chalk.red.bold('强烈建议输入 /new 命令开启新会话。')}\n`,
+					)
+				}
+				process.stdout.write('\n')
+			} catch (error) {
+				process.stdout.write(
+					`${chalk.red(`Context 自动压缩失败：${(error as Error).message}`)}\n${chalk.yellow('原始聊天记录未修改，下轮达到阈值时将重试压缩。')}\n\n`,
+				)
+			}
 		}
 	} catch (error) {
 		if (controller.signal.aborted) {
@@ -155,11 +293,8 @@ async function chat(userInput: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-	const stopKeyboardControls = setupKeyboardControls()
-	rl.once('close', () => {
-		inputClosed = true
-		stopKeyboardControls()
-	})
+	stopKeyboardControls = setupKeyboardControls()
+	attachInputCloseHandler()
 
 	printStartupBanner()
 
@@ -190,6 +325,15 @@ async function main(): Promise<void> {
 				return true
 			},
 			manageContext: (rawArgs) => contextSession.handle(rawArgs),
+			chooseContextAction: process.stdin.isTTY ? chooseContextAction : undefined,
+			getCurrentModel: () => describeModel(modelProvider),
+			chooseModel: process.stdin.isTTY ? chooseModel : undefined,
+			switchModel: (value) => {
+				const nextProvider = resolveModelProvider(value)
+				ensureModelConfigured(nextProvider)
+				modelProvider = nextProvider
+				return describeModel(nextProvider)
+			},
 			write: (message) => {
 				console.log(chalk.cyan(message))
 			},
