@@ -29,6 +29,8 @@ cp .env.example .env
 
 每轮 AI 成功回复后，终端会显示最终模型请求的 context token、该模型已知的上下文上限和占比。占比达到 80% 时，Agent 核心会立即调用独立的模型请求压缩历史 Context，CLI 只负责展示压缩状态：至少保留最近 6 条原始消息，并将更早且尚未压缩的消息合并为累计摘要。摘要从下一轮对话开始生效；压缩失败不会影响已经完成的 AI 回复，下一轮再次达到阈值时会重试。若同一会话累计压缩达到 3 次，Agent 仍会继续压缩，同时由 CLI 强烈建议输入 `/new` 开启新会话。若兼容网关未返回流式 usage，或模型上限未被内置识别，对应字段会显示“未知”，不会使用不可靠的估算值，也不会触发自动压缩。
 
+无需等待 80% 阈值，也可以输入 `/compact` 立即压缩当前会话。该命令调用 Agent 核心的 `compressContext` API，沿用自动压缩的保留范围、累计摘要与去重规则；压缩结果从下一轮对话开始使用，同样不会修改 SQLite 中的原始聊天记录。
+
 ## 会话记忆
 
 Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`；自动压缩状态单独保存在 `.data/context-compression/`，不会删除、替换或重写 SQLite 中的原始消息。每次 CLI 启动会创建新的会话 ID，因此不会自动引用上一次启动的对话。聊天过程中输入 `/new` 也会立即创建新的会话 ID，后续消息不会携带当前会话的历史。输入 `/sessions` 可用终端表格只读列出最近 20 个会话的完整 ID、最后用户输入和相对时间；输入 `/rewind <thread_id>` 可恢复列表中的历史会话及其自动压缩状态。`.data/` 已被 Git 忽略。
@@ -137,9 +139,9 @@ termclaw --help
 termclaw --version
 ```
 
-启动后会先显示 figlet 品牌标题、`package.json` 信息框（版本、描述、作者、文档）以及 ESC、`/model`、`/context`、exit 使用说明。
+启动后会先显示 figlet 品牌标题、`package.json` 信息框（版本、描述、作者、文档）以及 ESC、`/model`、`/context`、`/compact`、exit 使用说明。
 
-聊天过程中可以输入 `/new` 开启新会话，输入 `/sessions` 查看最近 20 个会话，输入 `/rewind <thread_id>` 恢复存在的历史会话，输入 `/model` 查看或切换模型，或输入 `/context` 手动控制下一轮模型使用的聊天记录。交互命令会在本地解析，不会发送给 AI；未来可继续增加带参数的命令。
+聊天过程中可以输入 `/new` 开启新会话，输入 `/sessions` 查看最近 20 个会话，输入 `/rewind <thread_id>` 恢复存在的历史会话，输入 `/model` 查看或切换模型，输入 `/context` 手动控制下一轮模型使用的聊天记录，或输入 `/compact` 立即压缩当前会话。交互命令会在本地解析，不会发送给 AI；未来可继续增加带参数的命令。
 
 也可发布后全局安装：
 

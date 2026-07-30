@@ -47,6 +47,7 @@ export function printStartupBanner(): void {
 	console.log(chalk.dim('  ESC       取消当前 AI 请求'))
 	console.log(chalk.dim('  /model    查看或切换 Kimi、DeepSeek 模型'))
 	console.log(chalk.dim('  /context  查看和编辑模型下一轮使用的聊天记录'))
+	console.log(chalk.dim('  /compact  立即压缩当前会话的历史 Context'))
 	console.log(chalk.dim('  exit      退出聊天'))
 	console.log()
 }

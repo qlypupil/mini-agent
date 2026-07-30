@@ -1,3 +1,5 @@
+import { type ContextCompressionResult } from '../runtime/context'
+
 export interface InteractiveCommand {
 	name: string
 	args: string[]
@@ -13,6 +15,7 @@ export interface InteractiveCommandContext {
 	getCurrentModel?: () => string
 	chooseModel?: () => Promise<string | undefined>
 	switchModel?: (model: string) => string
+	compressContext?: () => Promise<ContextCompressionResult>
 	write: (message: string) => void
 }
 
@@ -158,6 +161,37 @@ const commands: Record<string, InteractiveCommandHandler> = {
 			context.write(`已切换模型: ${context.switchModel(command.args[0])}`)
 		} catch (error) {
 			context.write(`模型切换失败: ${(error as Error).message}`)
+		}
+	},
+	compact: async (command, context) => {
+		if (command.args.length > 0) {
+			context.write('用法: /compact')
+			return
+		}
+
+		if (!context.compressContext) {
+			context.write('当前环境不支持 Context 压缩。')
+			return
+		}
+
+		try {
+			context.write('正在压缩 Context...')
+			const result = await context.compressContext()
+			if (!result.compressed) {
+				context.write(
+					`当前没有新的可压缩历史，已保留最近 ${result.retainedMessageCount} 条消息。`,
+				)
+				return
+			}
+
+			context.write(
+				`Context 压缩完成：本次压缩 ${result.newlyCompressedMessageCount} 条消息，保留最近 ${result.retainedMessageCount} 条消息，累计压缩 ${result.compressionCount} 次。\n压缩结果将在下一轮对话中使用，SQLite 原始聊天记录未修改。`,
+			)
+			if (result.compressionCount >= 3) {
+				context.write('强烈建议输入 /new 命令开启新会话。')
+			}
+		} catch (error) {
+			context.write(`Context 压缩失败: ${(error as Error).message}`)
 		}
 	},
 }

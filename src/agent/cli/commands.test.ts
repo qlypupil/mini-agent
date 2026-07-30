@@ -282,4 +282,78 @@ describe('handleInteractiveCommand', () => {
 			'模型切换失败: DEEPSEEK_API_KEY is not set',
 		)
 	})
+
+	it('compresses the current Context locally without forwarding the command to the Agent chat', async () => {
+		const compressContext = jest.fn().mockResolvedValue({
+			compressed: true,
+			newlyCompressedMessageCount: 8,
+			retainedMessageCount: 6,
+			compressionCount: 1,
+		})
+		const write = jest.fn()
+
+		const handled = await handleInteractiveCommand('/compact', {
+			startNewSession: jest.fn(),
+			listSessions: jest.fn(),
+			rewindSession: jest.fn(),
+			compressContext,
+			write,
+		})
+
+		expect(handled).toBe(true)
+		expect(compressContext).toHaveBeenCalledTimes(1)
+		expect(write).toHaveBeenNthCalledWith(1, '正在压缩 Context...')
+		expect(write).toHaveBeenNthCalledWith(
+			2,
+			'Context 压缩完成：本次压缩 8 条消息，保留最近 6 条消息，累计压缩 1 次。\n压缩结果将在下一轮对话中使用，SQLite 原始聊天记录未修改。',
+		)
+	})
+
+	it('reports when /compact has no new history to compress', async () => {
+		const write = jest.fn()
+
+		await handleInteractiveCommand('/compact', {
+			startNewSession: jest.fn(),
+			listSessions: jest.fn(),
+			rewindSession: jest.fn(),
+			compressContext: jest.fn().mockResolvedValue({
+				compressed: false,
+				newlyCompressedMessageCount: 0,
+				retainedMessageCount: 6,
+				compressionCount: 1,
+			}),
+			write,
+		})
+
+		expect(write).toHaveBeenNthCalledWith(1, '正在压缩 Context...')
+		expect(write).toHaveBeenNthCalledWith(
+			2,
+			'当前没有新的可压缩历史，已保留最近 6 条消息。',
+		)
+	})
+
+	it('validates /compact arguments and reports compression failures', async () => {
+		const compressContext = jest
+			.fn()
+			.mockRejectedValue(new Error('summary unavailable'))
+		const write = jest.fn()
+		const context = {
+			startNewSession: jest.fn(),
+			listSessions: jest.fn(),
+			rewindSession: jest.fn(),
+			compressContext,
+			write,
+		}
+
+		await handleInteractiveCommand('/compact unexpected', context)
+		await handleInteractiveCommand('/compact', context)
+
+		expect(compressContext).toHaveBeenCalledTimes(1)
+		expect(write).toHaveBeenNthCalledWith(1, '用法: /compact')
+		expect(write).toHaveBeenNthCalledWith(2, '正在压缩 Context...')
+		expect(write).toHaveBeenNthCalledWith(
+			3,
+			'Context 压缩失败: summary unavailable',
+		)
+	})
 })

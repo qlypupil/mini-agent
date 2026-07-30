@@ -115,7 +115,7 @@ export async function summarizeMessages(
 	return summarizeContextMessages(getChatModel(modelProvider), messages)
 }
 
-export async function compressChatContext(
+export async function compressContext(
 	threadId: string,
 	modelProvider: ModelProvider = getDefaultModelProvider(),
 ): Promise<ContextCompressionResult> {
@@ -134,6 +134,9 @@ export async function compressChatContext(
 	return result
 }
 
+// 保留原 API 名称，避免已有调用方因命名调整失效。
+export const compressChatContext = compressContext
+
 export type AutomaticContextCompressionResult =
 	| { status: 'not-needed' }
 	| { status: 'completed'; compression: ContextCompressionResult }
@@ -145,7 +148,7 @@ export async function compressChatContextIfNeeded(
 	modelProvider: ModelProvider = getDefaultModelProvider(),
 	options: {
 		onStart?: () => void
-		compress?: typeof compressChatContext
+		compress?: typeof compressContext
 	} = {},
 ): Promise<AutomaticContextCompressionResult> {
 	if (!shouldWarnContextUsage(contextUsage)) {
@@ -156,7 +159,7 @@ export async function compressChatContextIfNeeded(
 	try {
 		return {
 			status: 'completed',
-			compression: await (options.compress ?? compressChatContext)(
+			compression: await (options.compress ?? compressContext)(
 				threadId,
 				modelProvider,
 			),

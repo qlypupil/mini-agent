@@ -6,6 +6,7 @@ import chalk from 'chalk'
 import { Command } from 'commander'
 import {
 	compressChatContextIfNeeded,
+	compressContext,
 	describeModel,
 	ensureModelConfigured,
 	getChatMessages,
@@ -330,6 +331,7 @@ async function main(): Promise<void> {
 			},
 			manageContext: (rawArgs) => contextSession.handle(rawArgs),
 			chooseContextAction: process.stdin.isTTY ? chooseContextAction : undefined,
+			compressContext: () => compressContext(threadId, modelProvider),
 			getCurrentModel: () => describeModel(modelProvider),
 			chooseModel: process.stdin.isTTY ? chooseModel : undefined,
 			switchModel: (value) => {
