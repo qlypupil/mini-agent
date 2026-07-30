@@ -866,6 +866,19 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 25 个测试套件、128 条测试；覆盖最近 3 条、`read_file`、名称回溯、未知工具、当前轮多工具及 checkpointer 原文保留。
 
+## 34. [`e4a8638` `feat: 增加模型请求消息硬上限`](https://github.com/qlypupil/mini-agent/commit/e4a8638172a4c70e7ae0167a3c03793fec8cf2d2)
+
+**目标**：在 Tool 输出外置、历史 ToolMessage 简化和 80% 自动摘要之外，为模型请求增加按消息数量计算的最后一道硬保护。
+
+**主要改动**：
+
+- 新增 `MAX_MODEL_CONTEXT_MESSAGES = 300` 与 `trimModelContextMessages()`，在模型请求前限制聊天历史数量。
+- 已有自动压缩摘要时固定保留摘要，并保留最新 299 条消息；没有摘要时保留最新 300 条。
+- 裁剪边界切入 Tool 调用组合时，删除跨界的整组 AI tool call 与 ToolMessage，避免向模型发送不完整协议。
+- 裁剪只作用于 `modelWithTools.invoke()` 的输入投影，不修改 StateGraph state 或 SQLite checkpointer。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 25 个测试套件、132 条测试；覆盖 300/301 数量边界、累计摘要固定保留、Tool 调用组完整性及 checkpointer 历史不变。
+
 ## 当前结构
 
 ```text
@@ -880,7 +893,7 @@ src/agent/
     select_menu.ts            # TTY 方向键交互菜单
   runtime/
     graph.ts                  # StateGraph、模型请求、工具循环与调用日志
-    context.ts                # 自动摘要、压缩投影与历史 ToolMessage 简化
+    context.ts                # 自动摘要、压缩投影、消息硬裁剪与历史 ToolMessage 简化
     context_patch.ts          # 手动消息选择、校验与 Context 变换
     context_usage.ts          # Context token 用量与告警
     models.ts                 # Kimi、DeepSeek 配置与模型实例创建
@@ -903,6 +916,7 @@ tsconfig.build.json          # 仅编译运行时源码的构建配置
 - 交互命令已实现 `/new`、`/sessions`、`/rewind`、`/model`、`/compact` 和 `/context`；`/skill` 仍是后续待实现能力。
 - `/context summarize` 会发起一次独立模型请求并消耗 token；`/context apply once` 只改变下一轮模型所见历史，该轮新消息和 AI 回复仍会追加到原 thread。
 - 自动 Context 压缩状态保存在 `.data/context-compression/`，不会覆盖 SQLite 原历史；压缩依赖独立模型请求，外部模型过载时可能失败并在下一轮重试。
+- 模型请求最多投影 300 条聊天历史，额外的 SystemMessage 不计入该上限；按数量裁剪不能替代按 token 占比触发的自动摘要。
 - 超过 50,000 字符的 Tool 输出保存在 `tool_output/`；模型只接收文件路径与前 2000 字预览。更早的历史 ToolMessage 会在模型请求前临时简化，但 SQLite 中仍保留原始消息。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
