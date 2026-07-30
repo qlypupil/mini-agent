@@ -8,8 +8,10 @@ import { fakeModel } from '@langchain/core/testing'
 import {
 	applyContextCompression,
 	compressContextMessages,
+	MAX_MODEL_CONTEXT_MESSAGES,
 	simplifyHistoricalToolMessages,
 	summarizeContextMessages,
+	trimModelContextMessages,
 	type ContextCompression,
 } from './context'
 
@@ -129,6 +131,50 @@ describe('simplifyHistoricalToolMessages', () => {
 			expect(projected.find((message) => message.id === `tool-result-${index}`))
 				.toBe(messages.find((message) => message.id === `tool-result-${index}`))
 		}
+	})
+})
+
+describe('trimModelContextMessages', () => {
+	it('keeps at most the latest 300 messages', () => {
+		const messages = createMessages(MAX_MODEL_CONTEXT_MESSAGES + 1)
+		const projected = trimModelContextMessages(messages)
+
+		expect(projected).toHaveLength(MAX_MODEL_CONTEXT_MESSAGES)
+		expect(projected[0]).toBe(messages[1])
+		expect(projected.at(-1)).toBe(messages.at(-1))
+		expect(messages).toHaveLength(MAX_MODEL_CONTEXT_MESSAGES + 1)
+	})
+
+	it('pins the automatic summary while retaining the newest messages', () => {
+		const messages = createMessages(MAX_MODEL_CONTEXT_MESSAGES + 2)
+		const compressed = applyContextCompression(messages, {
+			summary: 'compressed beginning',
+			compressedMessageIds: ['message-1', 'message-2'],
+			compressionCount: 1,
+			updatedAt: '2026-07-30T00:00:00.000Z',
+		})
+		const projected = trimModelContextMessages(compressed)
+
+		expect(projected).toHaveLength(MAX_MODEL_CONTEXT_MESSAGES)
+		expect(projected[0].content).toContain('compressed beginning')
+		expect(projected[1]).toBe(messages[3])
+		expect(projected.at(-1)).toBe(messages.at(-1))
+	})
+
+	it('drops a complete tool group when the boundary would split it', () => {
+		const toolMessages = createToolMessages(1, 'web_search')
+		const recentMessages = createMessages(MAX_MODEL_CONTEXT_MESSAGES - 1)
+		const messages = [
+			new HumanMessage('old request'),
+			...toolMessages,
+			...recentMessages,
+		]
+		const projected = trimModelContextMessages(messages)
+
+		expect(projected).toHaveLength(MAX_MODEL_CONTEXT_MESSAGES - 1)
+		expect(projected).not.toContain(toolMessages[0])
+		expect(projected).not.toContain(toolMessages[1])
+		expect(projected).toEqual(recentMessages)
 	})
 })
 

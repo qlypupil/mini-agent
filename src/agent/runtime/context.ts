@@ -10,8 +10,11 @@ import { formatMessagesForSummary } from './context_patch'
 
 export const RECENT_CONTEXT_MESSAGES_TO_KEEP = 6
 export const RECENT_TOOL_MESSAGES_TO_KEEP = 3
+export const MAX_MODEL_CONTEXT_MESSAGES = 300
 
 const READ_FILE_TOOL_NAME = 'read_file'
+const AUTOMATIC_CONTEXT_SUMMARY_MESSAGE_ID =
+	'__termclaw_automatic_context_summary__'
 
 export interface ContextCompression {
 	summary: string
@@ -175,6 +178,38 @@ export function simplifyHistoricalToolMessages(
 	})
 }
 
+export function trimModelContextMessages(
+	messages: BaseMessage[],
+): BaseMessage[] {
+	if (messages.length <= MAX_MODEL_CONTEXT_MESSAGES) return messages
+
+	const retainedIndices = new Set<number>()
+	const retainedStart = messages.length - MAX_MODEL_CONTEXT_MESSAGES
+	for (let index = retainedStart; index < messages.length; index += 1) {
+		retainedIndices.add(index)
+	}
+
+	const summaryIndex = messages.findIndex(
+		(message) => message.id === AUTOMATIC_CONTEXT_SUMMARY_MESSAGE_ID,
+	)
+	if (summaryIndex >= 0 && !retainedIndices.has(summaryIndex)) {
+		retainedIndices.delete(retainedStart)
+		retainedIndices.add(summaryIndex)
+	}
+
+	for (const group of getToolMessageGroups(messages)) {
+		const indices = [...group]
+		const retainedCount = indices.filter((index) =>
+			retainedIndices.has(index),
+		).length
+		if (retainedCount === 0 || retainedCount === indices.length) continue
+
+		for (const index of indices) retainedIndices.delete(index)
+	}
+
+	return messages.filter((_message, index) => retainedIndices.has(index))
+}
+
 export async function summarizeContextMessages(
 	model: BaseChatModel,
 	messages: BaseMessage[],
@@ -273,6 +308,7 @@ export function applyContextCompression(
 	if (firstCompressedIndex < 0) return messages
 
 	const summaryMessage = new HumanMessage({
+		id: AUTOMATIC_CONTEXT_SUMMARY_MESSAGE_ID,
 		content: `Conversation summary (automatically compressed):\n${compression.summary.trim()}`,
 	})
 

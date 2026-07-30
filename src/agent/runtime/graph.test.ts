@@ -194,6 +194,40 @@ describe('custom chat graph', () => {
 		checkpointer.db.close()
 	})
 
+	it('caps model input at 300 messages without trimming checkpointed history', async () => {
+		const model = fakeModel().respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(model)
+		const config = { configurable: { thread_id: 'message-cap-thread' } }
+		const history = Array.from({ length: 301 }, (_, index) =>
+			index % 2 === 0
+				? new HumanMessage({ id: `message-${index + 1}`, content: `content-${index + 1}` })
+				: new AIMessage({ id: `message-${index + 1}`, content: `content-${index + 1}` }),
+		)
+		await graph.updateState(config, { messages: history })
+
+		await graph.invoke(
+			{ messages: [new HumanMessage({ id: 'current-message', content: 'continue' })] },
+			{
+				...config,
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(model.calls[0].messages).toHaveLength(301)
+		expect(model.calls[0].messages[0].content).toBe('system prompt')
+		expect(model.calls[0].messages[1].content).toBe('content-3')
+		expect(model.calls[0].messages.at(-1)?.content).toBe('continue')
+
+		const snapshot = await graph.getState(config)
+		expect(snapshot.values.messages).toHaveLength(303)
+		expect(snapshot.values.messages[0].content).toBe('content-1')
+		checkpointer.db.close()
+	})
+
 	it('simplifies historical tool results only for the model request', async () => {
 		const model = fakeModel().respond(new AIMessage('done'))
 		const { graph, checkpointer } = createTestGraph(model)

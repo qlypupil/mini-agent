@@ -72,6 +72,7 @@
 - 将 CLI 的 `AI:` 标签延迟到首个用户可见正文 token，避免纯 Tool 调用、空回复、请求失败或取消时显示空的 AI 回答标签。
 - 新增 Tool 大输出持久化：超过 50,000 字符的字符串结果写入 `tool_output/`，模型与 checkpointer 仅接收文件路径和前 2000 字预览，并保留原 `ToolMessage` 调用元数据。
 - 新增历史 ToolMessage 请求前简化：仅在模型输入投影中将较早结果替换为工具使用标记，保留当前轮、最近 3 条历史结果及所有 `read_file` 结果，不修改其他消息或 SQLite checkpointer。
+- 新增模型请求消息数量硬上限：聊天历史超过 300 条时仅向模型投影最近消息，已有累计摘要时固定保留摘要，并删除跨越裁剪边界的不完整 Tool 调用组，不修改 SQLite checkpointer。
 
 ## 进行中
 
@@ -135,3 +136,4 @@
 - Tool 大输出持久化与 Graph 接线回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、124 条测试），覆盖长度边界、UTF-8 大小、文件名安全、非字符串透传、消息元数据保留及写入失败降级。
 - 历史 ToolMessage 简化的纯函数与 StateGraph 非持久化投影回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、128 条测试），覆盖最近 3 条、`read_file`、工具名称回溯、未知工具、当前轮多工具及 checkpointer 原文保留。
 - `docs/commit-history.md` 已补齐自动 Context 压缩、模型切换、手动压缩、Tool 错误协议、超大输出持久化和历史 ToolMessage 简化 6 项提交说明，并将当前结构与后续边界同步至 `668d020`。
+- 模型请求 300 条消息硬上限回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、132 条测试），覆盖数量边界、累计摘要固定保留、Tool 调用组完整性及 checkpointer 历史不变。

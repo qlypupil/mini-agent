@@ -22,6 +22,7 @@ import {
 import {
 	applyContextCompression,
 	simplifyHistoricalToolMessages,
+	trimModelContextMessages,
 	type ContextCompression,
 } from './context'
 import { maybePersistToolMessages } from './tool_output'
@@ -91,7 +92,8 @@ export function createChatGraph({
 				: compression
 					? applyContextCompression(state.messages, compression)
 					: state.messages
-			const messages = simplifyHistoricalToolMessages(contextMessages)
+			const trimmedMessages = trimModelContextMessages(contextMessages)
+			const messages = simplifyHistoricalToolMessages(trimmedMessages)
 			const response = await modelWithTools.invoke(
 				[new SystemMessage(systemPrompt), ...messages],
 				{ signal: runtime.signal },
