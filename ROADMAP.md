@@ -134,3 +134,4 @@
 - `AI:` 标签改为正文首 token 输出后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（24 个测试套件、117 条测试）；源码检查确认 `aiLabel()` 只在用户可见正文回调中调用。
 - Tool 大输出持久化与 Graph 接线回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、124 条测试），覆盖长度边界、UTF-8 大小、文件名安全、非字符串透传、消息元数据保留及写入失败降级。
 - 历史 ToolMessage 简化的纯函数与 StateGraph 非持久化投影回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、128 条测试），覆盖最近 3 条、`read_file`、工具名称回溯、未知工具、当前轮多工具及 checkpointer 原文保留。
+- `docs/commit-history.md` 已补齐自动 Context 压缩、模型切换、手动压缩、Tool 错误协议、超大输出持久化和历史 ToolMessage 简化 6 项提交说明，并将当前结构与后续边界同步至 `668d020`。

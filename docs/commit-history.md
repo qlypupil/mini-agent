@@ -785,63 +785,125 @@ START -> apply_context -> model_request -> END
 - `git diff --check` 通过。
 - 构建产物通过真实 Moonshot 流式回归；本地 `/context` 帮助命令不会调用 AI，并能输出全部子命令。
 
+## 28. [`2ffc47f` `feat: 实现自动 Context 压缩与模型交互切换`](https://github.com/qlypupil/mini-agent/commit/2ffc47f2a4eb16ffb06ffdbaed9b8acd36307f37)
+
+**目标**：在 Context 接近模型上限时自动生成累计摘要，并允许用户在 Kimi 与 DeepSeek 之间切换，而不影响 SQLite 中的原始会话历史。
+
+**主要改动**：
+
+- 新增 Context 压缩模块和独立缓存，保留最近 6 条消息，并用 message ID 标记已经压缩的历史。
+- 压缩时保持 AI 工具调用与对应 `ToolMessage` 的完整边界；累计压缩达到 3 次后强烈建议使用 `/new`，但仍继续执行压缩。
+- 新增 Kimi、DeepSeek 模型配置与 `/model` 命令，支持交互菜单和完整命令两种切换方式。
+- StateGraph 通过 runtime context 接收本轮模型实例与自动压缩结果，切换模型不会重置对话或压缩缓存。
+- `/context` 裸命令改为交互菜单，同时保留适合非 TTY 环境的完整子命令。
+
+**验证**：
+
+- `pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 23 个测试套件、110 条测试。
+- DeepSeek 官方 `/models` 接口返回 HTTP 200；构建产物可切换到 DeepSeek 并完成真实流式回复。
+
+## 29. [`ed2840d` `refactor: 将自动 Context 压缩编排移入 Agent 层`](https://github.com/qlypupil/mini-agent/commit/ed2840de59c6a0ed88618d0f673f1fb60a702c7c)
+
+**目标**：让自动 Context 压缩成为 Agent 核心能力，CLI 只负责触发和展示结果。
+
+**主要改动**：
+
+- 在 `agent.ts` 中新增压缩阈值判断、缓存读写和错误收敛流程。
+- CLI 在每轮成功回复后调用 Agent API，根据 `not-needed`、`completed` 或 `failed` 状态输出提示。
+- 保持摘要独立调用模型、压缩投影不进入 SQLite checkpointer 的既有行为。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 24 个测试套件、113 条测试。
+
+## 30. [`b76f541` `feat: 增加手动 Context 压缩命令`](https://github.com/qlypupil/mini-agent/commit/b76f5416638ef082292a2c821d361c5bae8798e9)
+
+**目标**：允许用户不等待 80% 阈值，直接手动压缩当前会话中尚未处理的历史。
+
+**主要改动**：
+
+- 新增 `/compact` 交互命令。
+- 命令调用 `agent.ts` 的 `compressContext()`，复用自动压缩相同的累计摘要、最近消息保留和缓存逻辑。
+- 无可压缩历史时在本地返回提示，不发送普通聊天请求。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 24 个测试套件、116 条测试；构建产物在空会话执行 `/compact` 时正确返回“没有新的可压缩历史”。
+
+## 31. [`57bd4aa` `fix: 统一 Tool 错误状态处理`](https://github.com/qlypupil/mini-agent/commit/57bd4aaf693feb2ede5dbc942ac80e64cc7eb32c)
+
+**目标**：让 Tool 执行失败在消息协议和 CLI 展示中都明确标记为失败，避免错误结果显示为成功。
+
+**主要改动**：
+
+- Tool 返回统一的结构化错误结果，不再用普通成功字符串承载失败。
+- StateGraph 的工具节点捕获异常并生成 `ToolMessage(status: "error")`。
+- CLI 根据 ToolMessage 状态展示完成或失败。
+- 在 `docs/反馈/tool.md` 记录工具调用分析，并将“统一错误协议”标记为完成。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 24 个测试套件、117 条测试；回归测试确认异常工具结果的状态为 `error`。
+
+## 32. [`2fd6681` `feat: 持久化超大 Tool 输出并统一调用展示`](https://github.com/qlypupil/mini-agent/commit/2fd6681a7f2fd8871985c193538e5e7d771901b0)
+
+**目标**：限制超大 Tool 结果占用的模型 Context，并统一工具调用日志与 AI 正文标签的展示时机。
+
+**主要改动**：
+
+- 新增 `runtime/tool_output.ts`；Tool 字符串结果超过 50,000 字符时写入 `tool_output/`，`ToolMessage` 仅保留文件路径和前 2000 字预览。
+- 持久化失败时降级为原始 ToolMessage，不因辅助写文件失败中断工具调用。
+- Tool 调用日志集中到 StateGraph 工具节点，在执行前只打印 Tool 名称。
+- `AI:` 改为收到正文首个 token 时输出，不在 Tool 调用阶段提前显示。
+- `.gitignore` 忽略本地 `tool_output/`。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 25 个测试套件、124 条测试；覆盖长度边界、文件名安全、消息元数据保留及写入失败降级。
+
+## 33. [`668d020` `feat: 简化历史 ToolMessage 上下文`](https://github.com/qlypupil/mini-agent/commit/668d02046f7be675e7fda99d073a1ff4cea603a4)
+
+**目标**：减少历史 Tool 结果对模型 Context 的重复占用，同时保持当前工具循环和 checkpointer 原始记录不变。
+
+**主要改动**：
+
+- 模型请求前将较早的历史 ToolMessage 临时替换为 `[Previous: used <toolName>]`。
+- 仅简化 ToolMessage；保留其他消息、当前轮全部 ToolMessage、最近 3 条历史 ToolMessage 以及所有 `read_file` 结果。
+- ToolMessage 缺少名称时，从对应 AI tool call 按 `tool_call_id` 回溯；无法识别工具名时保留原文。
+- 简化结果只用于 `modelWithTools.invoke()` 的输入投影，不写回 StateGraph state 或 SQLite checkpointer。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 25 个测试套件、128 条测试；覆盖最近 3 条、`read_file`、名称回溯、未知工具、当前轮多工具及 checkpointer 原文保留。
+
 ## 当前结构
 
 ```text
-src/
-  agent/
-    agent.ts              # 模型初始化、Agent API 与流式调用
-    cli.ts                # 终端聊天循环、ESC 取消和可执行入口
-    env.ts                # 环境变量加载
-    cli/
-      banner.ts           # 启动 figlet 标题与 boxen 信息框
-      commands.ts         # 交互 slash 命令解析与分发
-      context_commands.ts # /context 暂存、预览与应用状态
-    runtime/
-      graph.ts            # StateGraph、模型请求与工具循环
-      context_patch.ts    # 消息选择、校验与 Context 变换
-      context_usage.ts    # Context token 用量与告警
-    storage/
-      checkpointer.ts     # 当前目录 SQLite checkpointer 工厂
-      sessions.ts         # SQLite 会话查询与终端表格
-    skills/
-      index.ts                # SKILL.md 发现、metadata 解析与索引
-      prompt.ts                # 模型可见的 skills 目录生成
-      planner/SKILL.md         # 计划与待办 skill
-      programmer-resume/SKILL.md # 程序员简历 skill
-      skill-creator/           # Anthropic skill-creator 及脚本资源
-    tools/
-      index.ts                 # 工具元信息与统一注册表
-      read_file_tool.ts       # 当前目录内的安全文件读取实现
-      read_file_tool.test.ts  # 文件读取安全边界单元测试
-      write_file_tool.ts       # 当前目录内的安全文件写入实现
-      write_file_tool.test.ts  # 文件写入安全边界单元测试
-      exec_tool.ts             # 当前目录内的只读命令执行实现
-      exec_tool.test.ts        # 命令白名单与路径边界单元测试
-      run_js_tool.ts           # Node 权限模型下的受限 JavaScript 执行实现
-      run_js_tool.test.ts      # JavaScript 执行与隔离边界单元测试
-      run_py_tool.ts           # 本机 python3 执行实现
-      run_py_tool.test.ts      # Python 执行与错误边界单元测试
-      web_search_tool.ts       # Tavily 通用网页搜索实现
-      web_search_tool.test.ts  # Tavily SDK 调用单元测试
-      web_fetch_tool.ts        # 受限公网网页抓取实现
-      web_fetch_tool.test.ts   # URL、响应大小与网络失败单元测试
-      load_skill_tool.ts       # 按名称加载完整 SKILL.md
-      load_skill_tool.test.ts  # Skill 加载与终端提示单元测试
-      current_time_tool.ts      # 本机日期、时间与时区读取实现
-      current_time_tool.test.ts # 本机时间工具单元测试
-  index.ts      # 基础示例函数
+src/agent/
+  agent.ts                    # 模型初始化、Agent API、流式调用与 Context 压缩编排
+  cli.ts                      # CLI 可执行入口、聊天循环与终端展示
+  env.ts                      # 环境变量加载
+  cli/
+    banner.ts                 # 启动欢迎屏与命令提示
+    commands.ts               # slash 命令解析和分发
+    context_commands.ts       # /context 暂存、预览与应用状态
+    select_menu.ts            # TTY 方向键交互菜单
+  runtime/
+    graph.ts                  # StateGraph、模型请求、工具循环与调用日志
+    context.ts                # 自动摘要、压缩投影与历史 ToolMessage 简化
+    context_patch.ts          # 手动消息选择、校验与 Context 变换
+    context_usage.ts          # Context token 用量与告警
+    models.ts                 # Kimi、DeepSeek 配置与模型实例创建
+    tool_output.ts            # 超大 Tool 输出持久化与预览消息
+  storage/
+    checkpointer.ts           # SQLite checkpointer 工厂
+    context_compression.ts    # 自动压缩状态的独立文件缓存
+    sessions.ts               # SQLite 会话查询与终端表格
+  skills/                     # Skills 注册、提示词与内置资源
+  tools/                      # Tools 注册、实现与安全边界测试
 scripts/
-  clean-dist.mjs   # 清理生成的 dist 目录
-  copy-skills.mjs  # 将内置 skill 资源复制到 dist
-tsconfig.build.json # 仅编译运行时源码的构建配置
+  clean-dist.mjs             # 清理生成的 dist 目录
+  copy-skills.mjs            # 将内置 skill 资源复制到 dist
+tsconfig.build.json          # 仅编译运行时源码的构建配置
 ```
 
 ## 后续边界
 
 - SQLite checkpointer 默认使用当前工作目录 `.data/checkpointer.db`；CLI 每次启动生成新的 thread ID，不会自动恢复上一轮终端对话。
-- 交互命令已实现 `/new`、`/sessions`、`/rewind` 和 `/context`；`/skill` 仍是后续待实现能力。
+- 交互命令已实现 `/new`、`/sessions`、`/rewind`、`/model`、`/compact` 和 `/context`；`/skill` 仍是后续待实现能力。
 - `/context summarize` 会发起一次独立模型请求并消耗 token；`/context apply once` 只改变下一轮模型所见历史，该轮新消息和 AI 回复仍会追加到原 thread。
+- 自动 Context 压缩状态保存在 `.data/context-compression/`，不会覆盖 SQLite 原历史；压缩依赖独立模型请求，外部模型过载时可能失败并在下一轮重试。
+- 超过 50,000 字符的 Tool 输出保存在 `tool_output/`；模型只接收文件路径与前 2000 字预览。更早的历史 ToolMessage 会在模型请求前临时简化，但 SQLite 中仍保留原始消息。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
