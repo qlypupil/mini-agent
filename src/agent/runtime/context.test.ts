@@ -8,6 +8,7 @@ import { fakeModel } from '@langchain/core/testing'
 import {
 	applyContextCompression,
 	compressContextMessages,
+	simplifyHistoricalToolMessages,
 	summarizeContextMessages,
 	type ContextCompression,
 } from './context'
@@ -18,6 +19,118 @@ function createMessages(count: number): BaseMessage[] {
 		return index % 2 === 0 ? new HumanMessage(fields) : new AIMessage(fields)
 	})
 }
+
+function createToolMessages(
+	index: number,
+	toolName = `tool_${index}`,
+	includeToolMessageName = true,
+): [AIMessage, ToolMessage] {
+	const toolCallId = `call-${index}`
+
+	return [
+		new AIMessage({
+			id: `tool-call-${index}`,
+			content: '',
+			tool_calls: [
+				{ id: toolCallId, name: toolName, args: {}, type: 'tool_call' },
+			],
+		}),
+		new ToolMessage({
+			id: `tool-result-${index}`,
+			content: `result-${index}`,
+			tool_call_id: toolCallId,
+			name: includeToolMessageName ? toolName : undefined,
+		}),
+	]
+}
+
+describe('simplifyHistoricalToolMessages', () => {
+	it('simplifies only ToolMessages older than the latest three', () => {
+		const history = Array.from({ length: 5 }, (_, index) =>
+			createToolMessages(index + 1),
+		).flat()
+		const currentMessage = new HumanMessage('continue')
+		const messages = [new HumanMessage('start'), ...history, currentMessage]
+		const projected = simplifyHistoricalToolMessages(messages)
+
+		expect(projected).toHaveLength(messages.length)
+		expect(projected.filter((message) => !ToolMessage.isInstance(message))).toEqual(
+			messages.filter((message) => !ToolMessage.isInstance(message)),
+		)
+		expect(projected.find((message) => message.id === 'tool-result-1')?.content)
+			.toBe('[Previous: used tool_1]')
+		expect(projected.find((message) => message.id === 'tool-result-2')?.content)
+			.toBe('[Previous: used tool_2]')
+		for (const index of [3, 4, 5]) {
+			expect(projected.find((message) => message.id === `tool-result-${index}`))
+				.toBe(messages.find((message) => message.id === `tool-result-${index}`))
+		}
+	})
+
+	it('always keeps read_file results and resolves missing names from tool calls', () => {
+		const metadata = { source: 'test' }
+		const readFileMessages = createToolMessages(1, 'read_file')
+		const fallbackMessages = createToolMessages(2, 'web_search', false)
+		fallbackMessages[1] = new ToolMessage({
+			...fallbackMessages[1],
+			metadata,
+			status: 'error',
+		})
+		const recentHistory = [3, 4, 5].flatMap((index) => createToolMessages(index))
+		const messages = [
+			new HumanMessage('start'),
+			...readFileMessages,
+			...fallbackMessages,
+			...recentHistory,
+			new HumanMessage('continue'),
+		]
+		const projected = simplifyHistoricalToolMessages(messages)
+		const readFileResult = projected.find(
+			(message) => message.id === 'tool-result-1',
+		)
+		const fallbackResult = projected.find(
+			(message) => message.id === 'tool-result-2',
+		) as ToolMessage
+
+		expect(readFileResult).toBe(readFileMessages[1])
+		expect(fallbackResult).not.toBe(fallbackMessages[1])
+		expect(fallbackResult).toMatchObject({
+			content: '[Previous: used web_search]',
+			tool_call_id: 'call-2',
+			status: 'error',
+			id: 'tool-result-2',
+			metadata,
+		})
+	})
+
+	it('keeps unknown and current-turn ToolMessages unchanged', () => {
+		const historical = [1, 2, 3, 4].flatMap((index) =>
+			createToolMessages(index),
+		)
+		const unknown = new ToolMessage({
+			id: 'unknown-result',
+			content: 'unknown result',
+			tool_call_id: 'unknown-call',
+		})
+		const currentToolMessages = [5, 6, 7, 8].flatMap((index) =>
+			createToolMessages(index),
+		)
+		const messages = [
+			new HumanMessage('start'),
+			unknown,
+			...historical,
+			new HumanMessage('current request'),
+			...currentToolMessages,
+		]
+		const projected = simplifyHistoricalToolMessages(messages)
+
+		expect(projected.find((message) => message.id === 'unknown-result')).toBe(unknown)
+		for (const index of [5, 6, 7, 8]) {
+			expect(projected.find((message) => message.id === `tool-result-${index}`))
+				.toBe(messages.find((message) => message.id === `tool-result-${index}`))
+		}
+	})
+})
 
 describe('summarizeContextMessages', () => {
 	it('summarizes selected messages without using a checkpointer', async () => {

@@ -9,6 +9,9 @@ import {
 import { formatMessagesForSummary } from './context_patch'
 
 export const RECENT_CONTEXT_MESSAGES_TO_KEEP = 6
+export const RECENT_TOOL_MESSAGES_TO_KEEP = 3
+
+const READ_FILE_TOOL_NAME = 'read_file'
 
 export interface ContextCompression {
 	summary: string
@@ -98,6 +101,78 @@ function getRetainedStartIndex(messages: BaseMessage[]): number {
 	}
 
 	return retainedStart
+}
+
+function getToolNamesByCallId(messages: BaseMessage[]): Map<string, string> {
+	const names = new Map<string, string>()
+
+	for (const message of messages) {
+		if (!AIMessage.isInstance(message)) continue
+		for (const toolCall of message.tool_calls ?? []) {
+			if (toolCall.id) names.set(toolCall.id, toolCall.name)
+		}
+	}
+
+	return names
+}
+
+function cloneToolMessageWithContent(
+	message: ToolMessage,
+	content: string,
+): ToolMessage {
+	return new ToolMessage({
+		content,
+		tool_call_id: message.tool_call_id,
+		name: message.name,
+		status: message.status,
+		id: message.id,
+		artifact: message.artifact,
+		metadata: message.metadata,
+		additional_kwargs: message.additional_kwargs,
+		response_metadata: message.response_metadata,
+	})
+}
+
+export function simplifyHistoricalToolMessages(
+	messages: BaseMessage[],
+): BaseMessage[] {
+	let currentTurnStart = -1
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		if (HumanMessage.isInstance(messages[index])) {
+			currentTurnStart = index
+			break
+		}
+	}
+	if (currentTurnStart < 0) return messages
+
+	const historicalToolIndices = messages
+		.map((message, index) =>
+			index < currentTurnStart && ToolMessage.isInstance(message) ? index : -1,
+		)
+		.filter((index) => index >= 0)
+	const recentToolIndices = new Set(
+		historicalToolIndices.slice(-RECENT_TOOL_MESSAGES_TO_KEEP),
+	)
+	const toolNamesByCallId = getToolNamesByCallId(messages)
+
+	return messages.map((message, index) => {
+		if (
+			!ToolMessage.isInstance(message) ||
+			index >= currentTurnStart ||
+			recentToolIndices.has(index)
+		) {
+			return message
+		}
+
+		const toolName =
+			message.name ?? toolNamesByCallId.get(message.tool_call_id)
+		if (!toolName || toolName === READ_FILE_TOOL_NAME) return message
+
+		return cloneToolMessageWithContent(
+			message,
+			`[Previous: used ${toolName}]`,
+		)
+	})
 }
 
 export async function summarizeContextMessages(

@@ -194,6 +194,65 @@ describe('custom chat graph', () => {
 		checkpointer.db.close()
 	})
 
+	it('simplifies historical tool results only for the model request', async () => {
+		const model = fakeModel().respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(model)
+		const config = { configurable: { thread_id: 'tool-history-thread' } }
+		const history: BaseMessage[] = [new HumanMessage('start')]
+
+		for (let index = 1; index <= 4; index += 1) {
+			history.push(
+				new AIMessage({
+					id: `tool-call-${index}`,
+					content: '',
+					tool_calls: [
+						{
+							id: `call-${index}`,
+							name: `tool_${index}`,
+							args: {},
+							type: 'tool_call',
+						},
+					],
+				}),
+				new ToolMessage({
+					id: `tool-result-${index}`,
+					content: `original-result-${index}`,
+					tool_call_id: `call-${index}`,
+					name: `tool_${index}`,
+				}),
+				new AIMessage({
+					id: `tool-answer-${index}`,
+					content: `answer-${index}`,
+				}),
+			)
+		}
+		await graph.updateState(config, { messages: history })
+
+		await graph.invoke(
+			{ messages: [new HumanMessage('continue')] },
+			{
+				...config,
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		const projectedToolResult = model.calls[0].messages.find(
+			(message) => message.id === 'tool-result-1',
+		)
+		expect(projectedToolResult?.content).toBe('[Previous: used tool_1]')
+
+		const snapshot = await graph.getState(config)
+		const persistedToolResult = snapshot.values.messages.find(
+			(message: BaseMessage) => message.id === 'tool-result-1',
+		)
+		expect(persistedToolResult?.content).toBe('original-result-1')
+		checkpointer.db.close()
+	})
+
 	it('returns tool results to the model through the tools node', async () => {
 		const callOrder: string[] = []
 		const log = jest.spyOn(console, 'log').mockImplementation((message) => {

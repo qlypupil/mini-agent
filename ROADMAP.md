@@ -71,6 +71,7 @@
 - 统一 Tool 调用日志：由 `runtime/graph.ts` 在实际调用前只打印 Tool 名称，移除 Tool 内部及 CLI 成功状态的重复日志，同时保留失败原因提示。
 - 将 CLI 的 `AI:` 标签延迟到首个用户可见正文 token，避免纯 Tool 调用、空回复、请求失败或取消时显示空的 AI 回答标签。
 - 新增 Tool 大输出持久化：超过 50,000 字符的字符串结果写入 `tool_output/`，模型与 checkpointer 仅接收文件路径和前 2000 字预览，并保留原 `ToolMessage` 调用元数据。
+- 新增历史 ToolMessage 请求前简化：仅在模型输入投影中将较早结果替换为工具使用标记，保留当前轮、最近 3 条历史结果及所有 `read_file` 结果，不修改其他消息或 SQLite checkpointer。
 
 ## 进行中
 
@@ -132,3 +133,4 @@
 - Tool 调用日志迁移至 Graph 执行节点后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（24 个测试套件、117 条测试）；回归测试确认日志只含 Tool 名称并先于 Tool 函数执行。
 - `AI:` 标签改为正文首 token 输出后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（24 个测试套件、117 条测试）；源码检查确认 `aiLabel()` 只在用户可见正文回调中调用。
 - Tool 大输出持久化与 Graph 接线回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、124 条测试），覆盖长度边界、UTF-8 大小、文件名安全、非字符串透传、消息元数据保留及写入失败降级。
+- 历史 ToolMessage 简化的纯函数与 StateGraph 非持久化投影回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、128 条测试），覆盖最近 3 条、`read_file`、工具名称回溯、未知工具、当前轮多工具及 checkpointer 原文保留。

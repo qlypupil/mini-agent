@@ -21,6 +21,7 @@ import {
 } from './context_patch'
 import {
 	applyContextCompression,
+	simplifyHistoricalToolMessages,
 	type ContextCompression,
 } from './context'
 import { maybePersistToolMessages } from './tool_output'
@@ -85,11 +86,12 @@ export function createChatGraph({
 			const modelWithTools = requestModel.bindTools(tools as BindToolsInput[])
 			const control = runtime.context?.contextControl
 			const compression = runtime.context?.contextCompression
-			const messages = control?.mode === 'once'
+			const contextMessages = control?.mode === 'once'
 				? applyContextPatch(state.messages, control.patch)
 				: compression
 					? applyContextCompression(state.messages, compression)
 					: state.messages
+			const messages = simplifyHistoricalToolMessages(contextMessages)
 			const response = await modelWithTools.invoke(
 				[new SystemMessage(systemPrompt), ...messages],
 				{ signal: runtime.signal },
