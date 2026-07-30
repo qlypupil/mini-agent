@@ -199,8 +199,9 @@ async function chooseContextAction(): Promise<string | undefined> {
 }
 
 async function chat(userInput: string): Promise<void> {
-	// write 不自动换行，使每个流式 token 能连续显示；AI 正文保持默认颜色。
-	process.stdout.write(`\n${aiLabel()}`)
+	let responseStarted = false
+	let toolLogLineReady = true
+	process.stdout.write('\n')
 
 	// 每轮请求独享控制器，避免 ESC 取消到下一轮对话。
 	const controller = new AbortController()
@@ -213,15 +214,23 @@ async function chat(userInput: string): Promise<void> {
 		const result = await runAgentStream(
 			userInput,
 			(token: string) => {
+				// 只有首个用户可见正文 token 到达时才显示 AI 标签。
+				if (!responseStarted) {
+					process.stdout.write(aiLabel())
+					responseStarted = true
+				}
 				process.stdout.write(token)
+				toolLogLineReady = false
 			},
 			requestThreadId,
 			controller.signal,
 			(event) => {
 				if (event.status === 'started') {
-					process.stdout.write(
-						`\n${chalk.yellow.dim(`[Tool] ${event.name} started.`)}\n`,
-					)
+					// 正文之后发生 Tool 调用时，先结束当前行再由 Graph 打印 Tool 名称。
+					if (!toolLogLineReady) {
+						process.stdout.write('\n')
+						toolLogLineReady = true
+					}
 					return
 				}
 
@@ -229,15 +238,13 @@ async function chat(userInput: string): Promise<void> {
 					const detail = event.error
 						? chalk.red.dim(`: ${event.error.slice(0, 200)}`)
 						: ''
+					const separator = toolLogLineReady ? '' : '\n'
 					process.stdout.write(
-						`\n${chalk.red(`[Tool] ${event.name} failed`)}${detail}\n\n${aiLabel()}`,
+						`${separator}${chalk.red(`[Tool] ${event.name} failed`)}${detail}\n`,
 					)
+					toolLogLineReady = true
 					return
 				}
-
-				process.stdout.write(
-					`\n${chalk.green.dim(`[Tool] ${event.name} completed.`)}\n\n${aiLabel()}`,
-				)
 			},
 			contextControl,
 			requestModelProvider,

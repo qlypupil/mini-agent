@@ -1,6 +1,6 @@
 # Tool 调用链分析
 
-主人，结论：当前 Tool 调用链已经完整可用，LangGraph 循环和 Context 处理是合理的；但还不适合完全自主执行。工具失败状态误报已修复，当前最需要处理的是 run_py 未沙箱化和写操作无确认。
+主人，结论：当前 Tool 调用链已经完整可用，LangGraph 循环和 Context 处理是合理的；但还不适合完全自主执行。工具失败状态误报和超大字符串输出直接进入 Context 的问题已修复，当前最需要处理的是 run_py 未沙箱化和写操作无确认。
 
 ## 当前链路
 
@@ -51,11 +51,13 @@ src/agent/tools/run_py_tool.ts:13 使用的 python3
 
 `run_py`、`run_js`、`web_fetch`、`load_skill` 已与其他工具统一错误协议：成功时正常返回结果，失败时抛出 `Error`。LangGraph `ToolNode` 会将异常转换为 `ToolMessage(status: "error")`，CLI 据此显示 `[Tool] <name> failed`，错误信息仍会返回给模型处理。
 
-### 4. read_file 没有输出大小限制
+### 4. read_file 一次性读取大文件（Context 风险已缓解）
 
-src/agent/tools/read_file_tool.ts:48 会一次性读取整个文件。大文件会直接进入 ToolMessage、SQLite 和下一次模型请求。
+状态：超大字符串输出已于 2026-07-30 完成持久化处理并验证。
 
-自动 Context 压缩发生在整轮对话结束之后，因此无法避免当前工具调用把模型 Context 撑爆。
+src/agent/tools/read_file_tool.ts:48 仍会一次性读取整个文件。但 Tool 返回超过 50,000 字符的字符串时，runtime/tool_output.ts 会将完整内容写入 `tool_output/`，返回给模型和 checkpointer 的 `ToolMessage` 只保留文件路径与前 2000 字预览，避免超大结果直接撑满当前 Context。
+
+剩余风险是 `read_file` 仍会把整个文件加载到进程内存，且暂无按行或按字节分段读取的参数。
 
 ### 5. 缺少明确的 Tool 调用预算和取消传播
 
@@ -90,4 +92,5 @@ src/agent/tools/read_file_tool.ts:48 会一次性读取整个文件。大文件�
    tools 之间增加 authorize_tools 节点，对写入和执行类工具使用 LangGraph
    interrupt。
 4. [ ] 增加 Tool 次数、总输出、耗时和取消控制。
-5. [ ] 给 read_file 增加大小限制，再强化 web_fetch 的网络连接校验。
+5. [x] 将超大 Tool 字符串输出持久化，限制进入模型与 checkpointer 的内容。
+6. [ ] 给 read_file 增加分段读取能力，再强化 web_fetch 的网络连接校验。

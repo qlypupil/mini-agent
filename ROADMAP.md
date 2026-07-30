@@ -68,6 +68,9 @@
 - 将自动 Context 压缩的阈值判断、执行和失败降级收归 `agent.ts`，`cli.ts` 只调用 Agent API 并展示压缩状态。
 - 新增 `/compact` 本地命令，可随时调用 Agent 核心的 `compressContext` API 压缩当前会话，并在下一轮对话中使用结果。
 - 统一 Tool 错误协议：工具失败时抛出异常，由 LangGraph 转换为带错误状态的 `ToolMessage`，避免 CLI 将失败误报为完成。
+- 统一 Tool 调用日志：由 `runtime/graph.ts` 在实际调用前只打印 Tool 名称，移除 Tool 内部及 CLI 成功状态的重复日志，同时保留失败原因提示。
+- 将 CLI 的 `AI:` 标签延迟到首个用户可见正文 token，避免纯 Tool 调用、空回复、请求失败或取消时显示空的 AI 回答标签。
+- 新增 Tool 大输出持久化：超过 50,000 字符的字符串结果写入 `tool_output/`，模型与 checkpointer 仅接收文件路径和前 2000 字预览，并保留原 `ToolMessage` 调用元数据。
 
 ## 进行中
 
@@ -126,3 +129,6 @@
 - 自动 Context 压缩编排迁移至 Agent 层后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（24 个测试套件、113 条测试）。
 - `/compact` 手动压缩命令接入后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（24 个测试套件、116 条测试）；构建产物在空会话中执行 `/compact`，本地返回“没有新的可压缩历史”，未发送普通 AI 对话请求。
 - Tool 错误协议统一后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（24 个测试套件、117 条测试）；回归测试确认异常工具结果会生成 `ToolMessage(status: "error")`。
+- Tool 调用日志迁移至 Graph 执行节点后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（24 个测试套件、117 条测试）；回归测试确认日志只含 Tool 名称并先于 Tool 函数执行。
+- `AI:` 标签改为正文首 token 输出后，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（24 个测试套件、117 条测试）；源码检查确认 `aiLabel()` 只在用户可见正文回调中调用。
+- Tool 大输出持久化与 Graph 接线回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、124 条测试），覆盖长度边界、UTF-8 大小、文件名安全、非字符串透传、消息元数据保留及写入失败降级。

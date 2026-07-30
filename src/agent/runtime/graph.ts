@@ -1,5 +1,6 @@
 import { BaseChatModel, BindToolsInput } from '@langchain/core/language_models/chat_models'
 import {
+	AIMessage,
 	BaseMessage,
 	SystemMessage,
 } from '@langchain/core/messages'
@@ -22,6 +23,7 @@ import {
 	applyContextCompression,
 	type ContextCompression,
 } from './context'
+import { maybePersistToolMessages } from './tool_output'
 import { createCheckpointer } from '../storage/checkpointer'
 
 export type ContextApplyMode = 'once' | 'persist'
@@ -59,6 +61,8 @@ export function createChatGraph({
 	systemPrompt,
 	checkpointer,
 }: CreateChatGraphOptions) {
+	const toolExecutor = new ToolNode(tools)
+
 	return new StateGraph(ChatState, ChatContext)
 		.addNode('apply_context', (state, runtime) => {
 			const control = runtime.context?.contextControl
@@ -93,7 +97,27 @@ export function createChatGraph({
 
 			return { messages: [response as BaseMessage] }
 		})
-		.addNode('tools', new ToolNode(tools))
+		.addNode('tools', async function toolNode(state, runtime) {
+			const lastMessage = state.messages.at(-1) as AIMessage | undefined
+			for (const toolCall of lastMessage?.tool_calls ?? []) {
+				console.log(`[Tool] ${toolCall.name}`)
+			}
+
+			const result = await toolExecutor.invoke(state, runtime)
+			if (
+				typeof result !== 'object' ||
+				result === null ||
+				!('messages' in result) ||
+				!Array.isArray(result.messages)
+			) {
+				return result
+			}
+
+			return {
+				...result,
+				messages: await maybePersistToolMessages(result.messages),
+			}
+		})
 		.addEdge(START, 'apply_context')
 		.addEdge('apply_context', 'model_request')
 		.addConditionalEdges('model_request', toolsCondition, ['tools', END])

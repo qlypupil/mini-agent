@@ -33,7 +33,7 @@ cp .env.example .env
 
 ## 会话记忆
 
-Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`；自动压缩状态单独保存在 `.data/context-compression/`，不会删除、替换或重写 SQLite 中的原始消息。每次 CLI 启动会创建新的会话 ID，因此不会自动引用上一次启动的对话。聊天过程中输入 `/new` 也会立即创建新的会话 ID，后续消息不会携带当前会话的历史。输入 `/sessions` 可用终端表格只读列出最近 20 个会话的完整 ID、最后用户输入和相对时间；输入 `/rewind <thread_id>` 可恢复列表中的历史会话及其自动压缩状态。`.data/` 已被 Git 忽略。
+Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`；自动压缩状态单独保存在 `.data/context-compression/`，不会删除、替换或重写 SQLite 中的原始消息。Tool 返回超过 50,000 字符的字符串时，完整结果会写入当前工作目录的 `tool_output/`，传给模型和 checkpointer 的 `ToolMessage` 只保留文件路径与前 2000 字预览。每次 CLI 启动会创建新的会话 ID，因此不会自动引用上一次启动的对话。聊天过程中输入 `/new` 也会立即创建新的会话 ID，后续消息不会携带当前会话的历史。输入 `/sessions` 可用终端表格只读列出最近 20 个会话的完整 ID、最后用户输入和相对时间；输入 `/rewind <thread_id>` 可恢复列表中的历史会话及其自动压缩状态。`.data/` 与 `tool_output/` 已被 Git 忽略。
 
 ## Context 管理
 

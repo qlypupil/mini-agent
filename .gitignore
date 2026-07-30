@@ -6,6 +6,7 @@ node_modules/
 dist/
 coverage/
 .data/
+tool_output/
 
 # Environment files
 .env

@@ -1,11 +1,17 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages'
+import {
+	AIMessage,
+	BaseMessage,
+	HumanMessage,
+	ToolMessage,
+} from '@langchain/core/messages'
 import { fakeModel } from '@langchain/core/testing'
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { createChatGraph } from './graph'
+import * as toolOutput from './tool_output'
 import { createCheckpointer } from '../storage/checkpointer'
 
 function createTestGraph(model = fakeModel(), testTools: Parameters<typeof createChatGraph>[0]['tools'] = []) {
@@ -25,6 +31,10 @@ function createTestGraph(model = fakeModel(), testTools: Parameters<typeof creat
 }
 
 describe('custom chat graph', () => {
+	afterEach(() => {
+		jest.restoreAllMocks()
+	})
+
 	it('uses the model supplied in runtime context for the current request', async () => {
 		const defaultModel = fakeModel().respond(new AIMessage('default'))
 		const runtimeModel = fakeModel().respond(new AIMessage('runtime'))
@@ -185,7 +195,14 @@ describe('custom chat graph', () => {
 	})
 
 	it('returns tool results to the model through the tools node', async () => {
-		const echo = tool(({ text }: { text: string }) => `echo:${text}`, {
+		const callOrder: string[] = []
+		const log = jest.spyOn(console, 'log').mockImplementation((message) => {
+			callOrder.push(String(message))
+		})
+		const echo = tool(({ text }: { text: string }) => {
+			callOrder.push('executed')
+			return `echo:${text}`
+		}, {
 			name: 'echo',
 			description: 'Echo text.',
 			schema: z.object({ text: z.string() }),
@@ -212,6 +229,8 @@ describe('custom chat graph', () => {
 		expect(model.callCount).toBe(2)
 		expect(model.calls[1].messages.some((message) => message.getType() === 'tool')).toBe(true)
 		expect(result.messages.at(-1)?.content).toBe('final')
+		expect(log).toHaveBeenCalledWith('[Tool] echo')
+		expect(callOrder).toEqual(['[Tool] echo', 'executed'])
 		checkpointer.db.close()
 	})
 
@@ -249,6 +268,52 @@ describe('custom chat graph', () => {
 			status: 'error',
 			content: expect.stringContaining('tool failed'),
 		})
+		checkpointer.db.close()
+	})
+
+	it('returns processed tool output to the model', async () => {
+		const processedContent = '<persisted-output>preview</persisted-output>'
+		const persist = jest
+			.spyOn(toolOutput, 'maybePersistToolMessages')
+			.mockImplementation(async (messages) =>
+				messages.map((message) =>
+					ToolMessage.isInstance(message)
+						? new ToolMessage({
+							...message,
+							content: processedContent,
+						})
+						: message,
+				),
+			)
+		const largeOutput = tool(() => 'a'.repeat(50_001), {
+			name: 'large_output',
+			description: 'Returns a large output.',
+			schema: z.object({}),
+		})
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-large', name: 'large_output', args: {} },
+			])
+			.respond(new AIMessage('handled'))
+		const { graph, checkpointer } = createTestGraph(model, [largeOutput])
+
+		await graph.invoke(
+			{ messages: [new HumanMessage('use the tool')] },
+			{
+				configurable: { thread_id: 'large-tool-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		const toolMessage = model.calls[1].messages.find(
+			(message) => message.getType() === 'tool',
+		)
+		expect(persist).toHaveBeenCalledTimes(1)
+		expect(toolMessage?.content).toBe(processedContent)
 		checkpointer.db.close()
 	})
 
