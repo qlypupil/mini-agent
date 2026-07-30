@@ -215,6 +215,43 @@ describe('custom chat graph', () => {
 		checkpointer.db.close()
 	})
 
+	it('returns thrown tool errors to the model with an error status', async () => {
+		const failingTool = tool(async () => {
+			throw new Error('tool failed')
+		}, {
+			name: 'failing_tool',
+			description: 'Always fails.',
+			schema: z.object({}),
+		})
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-1', name: 'failing_tool', args: {} },
+			])
+			.respond(new AIMessage('handled'))
+		const { graph, checkpointer } = createTestGraph(model, [failingTool])
+
+		await graph.invoke(
+			{ messages: [new HumanMessage('use the tool')] },
+			{
+				configurable: { thread_id: 'failed-tool-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		const toolMessage = model.calls[1].messages.find(
+			(message) => message.getType() === 'tool',
+		)
+		expect(toolMessage).toMatchObject({
+			status: 'error',
+			content: expect.stringContaining('tool failed'),
+		})
+		checkpointer.db.close()
+	})
+
 	it('keeps model and tool node names in message stream metadata', async () => {
 		const model = fakeModel().respond(new AIMessage('streamed'))
 		const { graph, checkpointer } = createTestGraph(model)

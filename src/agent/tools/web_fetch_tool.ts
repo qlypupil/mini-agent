@@ -135,29 +135,29 @@ export async function webFetchTool(
 			if (response.status >= 300 && response.status < 400) {
 				const location = response.headers.get('location')
 				if (!location) {
-					return `Error: Redirect response from ${target} has no location.`
+					throw new Error(`Redirect response from ${target} has no location.`)
 				}
 				if (redirectCount === MAX_REDIRECTS) {
-					return 'Error: Too many redirects.'
+					throw new Error('Too many redirects.')
 				}
 				target = await assertPublicUrl(new URL(location, target).toString())
 				continue
 			}
 
 			if (!response.ok) {
-				return `Error: Request failed with HTTP ${response.status}.`
+				throw new Error(`Request failed with HTTP ${response.status}.`)
 			}
 
 			const content = await readTextResponse(response)
 			return `URL: ${target}\nContent-Type: ${response.headers.get('content-type') ?? 'unknown'}\n\n${content}`
 		}
 
-		return 'Error: Too many redirects.'
+		throw new Error('Too many redirects.')
 	} catch (error) {
 		if ((error as Error).name === 'AbortError') {
-			return 'Error: Request timed out after 10 seconds.'
+			throw new Error('Request timed out after 10 seconds.')
 		}
-		return `Error: ${(error as Error).message}`
+		throw error instanceof Error ? error : new Error(String(error))
 	} finally {
 		clearTimeout(timeout)
 	}

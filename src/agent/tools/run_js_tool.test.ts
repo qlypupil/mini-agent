@@ -36,17 +36,17 @@ describe('runJsTool', () => {
 	})
 
 	it('returns syntax error details', async () => {
-		await expect(runJsTool('const = 1')).resolves.toContain('SyntaxError')
+		await expect(runJsTool('const = 1')).rejects.toThrow('SyntaxError')
 	})
 
 	it('returns runtime error details', async () => {
-		await expect(runJsTool("throw new Error('boom')")).resolves.toContain('boom')
+		await expect(runJsTool("throw new Error('boom')")).rejects.toThrow('boom')
 	})
 
 	it('denies file system access', async () => {
 		await expect(
 			runJsTool("import { readFileSync } from 'node:fs'; readFileSync('package.json')"),
-		).resolves.toContain('ERR_ACCESS_DENIED')
+		).rejects.toThrow('ERR_ACCESS_DENIED')
 	})
 
 	it('does not expose parent environment variables', async () => {
@@ -58,6 +58,6 @@ describe('runJsTool', () => {
 	it('reports when Node.js is unavailable', async () => {
 		await expect(
 			runJavaScript('console.log(1)', 'node-command-not-installed'),
-		).resolves.toContain('Node.js is not installed')
+		).rejects.toThrow('Node.js is not installed')
 	})
 })

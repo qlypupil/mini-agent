@@ -67,6 +67,7 @@
 - 自动压缩判定恢复使用模型正常 Context 上限：Kimi 为 262,144，DeepSeek 为 1,048,576。
 - 将自动 Context 压缩的阈值判断、执行和失败降级收归 `agent.ts`，`cli.ts` 只调用 Agent API 并展示压缩状态。
 - 新增 `/compact` 本地命令，可随时调用 Agent 核心的 `compressContext` API 压缩当前会话，并在下一轮对话中使用结果。
+- 统一 Tool 错误协议：工具失败时抛出异常，由 LangGraph 转换为带错误状态的 `ToolMessage`，避免 CLI 将失败误报为完成。
 
 ## 进行中
 
@@ -124,3 +125,4 @@
 - 恢复 Kimi、DeepSeek 正常 Context 上限后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（23 个测试套件、110 条测试）。
 - 自动 Context 压缩编排迁移至 Agent 层后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（24 个测试套件、113 条测试）。
 - `/compact` 手动压缩命令接入后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（24 个测试套件、116 条测试）；构建产物在空会话中执行 `/compact`，本地返回“没有新的可压缩历史”，未发送普通 AI 对话请求。
+- Tool 错误协议统一后，`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（24 个测试套件、117 条测试）；回归测试确认异常工具结果会生成 `ToolMessage(status: "error")`。

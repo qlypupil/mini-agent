@@ -40,11 +40,11 @@ print(totals["book"])
 	})
 
 	it('returns syntax error details', async () => {
-		await expect(runPyTool('def = 1')).resolves.toContain('SyntaxError')
+		await expect(runPyTool('def = 1')).rejects.toThrow('SyntaxError')
 	})
 
 	it('returns runtime error details', async () => {
-		await expect(runPyTool('raise RuntimeError("boom")')).resolves.toContain('boom')
+		await expect(runPyTool('raise RuntimeError("boom")')).rejects.toThrow('boom')
 	})
 
 	it('does not expose parent environment variables', async () => {
@@ -56,12 +56,12 @@ print(totals["book"])
 	it('reports when Python 3 is unavailable', async () => {
 		await expect(
 			runPython('print(1)', 'python3-command-not-installed'),
-		).resolves.toContain('Python 3 is not installed')
+		).rejects.toThrow('Python 3 is not installed')
 	})
 
 	it('rejects oversized source', async () => {
 		const code = `print(1)\n${'x'.repeat(20 * 1024)}`
 
-		await expect(runPyTool(code)).resolves.toBe('Python source exceeded the 20 KB limit.')
+		await expect(runPyTool(code)).rejects.toThrow('Python source exceeded the 20 KB limit.')
 	})
 })

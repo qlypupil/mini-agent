@@ -6,7 +6,7 @@ const MAX_OUTPUT_BYTES = 64 * 1024
 const MAX_CODE_BYTES = 20 * 1024
 
 function runJavaScript(code: string, nodeCommand = NODE_COMMAND): Promise<string> {
-	return new Promise((resolveResult) => {
+	return new Promise((resolveResult, rejectResult) => {
 		const child = spawn(
 			nodeCommand,
 			['--permission', '--input-type=module', '--eval', code],
@@ -25,13 +25,17 @@ function runJavaScript(code: string, nodeCommand = NODE_COMMAND): Promise<string
 		let exceededOutputLimit = false
 		let settled = false
 
-		const finish = (result: string) => {
+		const finish = (result: string | Error) => {
 			if (settled) {
 				return
 			}
 
 			settled = true
 			clearTimeout(timeout)
+			if (result instanceof Error) {
+				rejectResult(result)
+				return
+			}
 			resolveResult(result)
 		}
 
@@ -55,11 +59,11 @@ function runJavaScript(code: string, nodeCommand = NODE_COMMAND): Promise<string
 		child.stderr.on('data', (chunk: Buffer) => appendOutput(chunk, 'stderr'))
 		child.on('error', (error) => {
 			if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-				finish('Node.js is not installed or is not available on PATH.')
+				finish(new Error('Node.js is not installed or is not available on PATH.'))
 				return
 			}
 
-			finish(`Unable to start Node.js: ${error.message}`)
+			finish(new Error(`Unable to start Node.js: ${error.message}`))
 		})
 
 		const timeout = setTimeout(() => {
@@ -69,17 +73,17 @@ function runJavaScript(code: string, nodeCommand = NODE_COMMAND): Promise<string
 
 		child.on('close', (code) => {
 			if (timedOut) {
-				finish('JavaScript execution timed out after 5 seconds.')
+				finish(new Error('JavaScript execution timed out after 5 seconds.'))
 				return
 			}
 
 			if (exceededOutputLimit) {
-				finish('JavaScript output exceeded the 64 KB limit.')
+				finish(new Error('JavaScript output exceeded the 64 KB limit.'))
 				return
 			}
 
 			if (code !== 0) {
-				finish(`JavaScript execution failed:\n${stderr || stdout}`)
+				finish(new Error(`JavaScript execution failed:\n${stderr || stdout}`))
 				return
 			}
 
@@ -90,7 +94,7 @@ function runJavaScript(code: string, nodeCommand = NODE_COMMAND): Promise<string
 
 export async function runJsTool(code: string): Promise<string> {
 	if (Buffer.byteLength(code, 'utf8') > MAX_CODE_BYTES) {
-		return 'JavaScript source exceeded the 20 KB limit.'
+		throw new Error('JavaScript source exceeded the 20 KB limit.')
 	}
 
 	return runJavaScript(code)

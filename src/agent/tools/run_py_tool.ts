@@ -6,7 +6,7 @@ const MAX_OUTPUT_BYTES = 64 * 1024
 const MAX_CODE_BYTES = 20 * 1024
 
 function runPython(code: string, pythonCommand = PYTHON_COMMAND): Promise<string> {
-	return new Promise((resolveResult) => {
+	return new Promise((resolveResult, rejectResult) => {
 		const child = spawn(
 			pythonCommand,
 			// -I：隔离模式，忽略用户 site 与 PYTHON* 环境变量，减少外部环境影响。
@@ -26,13 +26,17 @@ function runPython(code: string, pythonCommand = PYTHON_COMMAND): Promise<string
 		let exceededOutputLimit = false
 		let settled = false
 
-		const finish = (result: string) => {
+		const finish = (result: string | Error) => {
 			if (settled) {
 				return
 			}
 
 			settled = true
 			clearTimeout(timeout)
+			if (result instanceof Error) {
+				rejectResult(result)
+				return
+			}
 			resolveResult(result)
 		}
 
@@ -56,11 +60,11 @@ function runPython(code: string, pythonCommand = PYTHON_COMMAND): Promise<string
 		child.stderr.on('data', (chunk: Buffer) => appendOutput(chunk, 'stderr'))
 		child.on('error', (error) => {
 			if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-				finish('Python 3 is not installed or is not available on PATH.')
+				finish(new Error('Python 3 is not installed or is not available on PATH.'))
 				return
 			}
 
-			finish(`Unable to start Python 3: ${error.message}`)
+			finish(new Error(`Unable to start Python 3: ${error.message}`))
 		})
 
 		const timeout = setTimeout(() => {
@@ -70,17 +74,17 @@ function runPython(code: string, pythonCommand = PYTHON_COMMAND): Promise<string
 
 		child.on('close', (code) => {
 			if (timedOut) {
-				finish('Python execution timed out after 5 seconds.')
+				finish(new Error('Python execution timed out after 5 seconds.'))
 				return
 			}
 
 			if (exceededOutputLimit) {
-				finish('Python output exceeded the 64 KB limit.')
+				finish(new Error('Python output exceeded the 64 KB limit.'))
 				return
 			}
 
 			if (code !== 0) {
-				finish(`Python execution failed:\n${stderr || stdout}`)
+				finish(new Error(`Python execution failed:\n${stderr || stdout}`))
 				return
 			}
 
@@ -91,7 +95,7 @@ function runPython(code: string, pythonCommand = PYTHON_COMMAND): Promise<string
 
 export async function runPyTool(code: string): Promise<string> {
 	if (Buffer.byteLength(code, 'utf8') > MAX_CODE_BYTES) {
-		return 'Python source exceeded the 20 KB limit.'
+		throw new Error('Python source exceeded the 20 KB limit.')
 	}
 
 	return runPython(code)

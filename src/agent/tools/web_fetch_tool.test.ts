@@ -39,22 +39,22 @@ describe('webFetchTool', () => {
 	})
 
 	it('rejects non-HTTP URLs', async () => {
-		await expect(webFetchTool('file:///etc/passwd')).resolves.toBe(
-			'Error: Only HTTP and HTTPS URLs are allowed.',
+		await expect(webFetchTool('file:///etc/passwd')).rejects.toThrow(
+			'Only HTTP and HTTPS URLs are allowed.',
 		)
 	})
 
 	it('rejects local network URLs', async () => {
-		await expect(webFetchTool('http://127.0.0.1/admin')).resolves.toBe(
-			'Error: Local network URLs are not allowed.',
+		await expect(webFetchTool('http://127.0.0.1/admin')).rejects.toThrow(
+			'Local network URLs are not allowed.',
 		)
 	})
 
 	it('returns request errors to the agent', async () => {
 		const request = jest.fn().mockRejectedValue(new Error('Network unavailable'))
 
-		await expect(webFetchTool('https://example.com', request)).resolves.toBe(
-			'Error: Network unavailable',
+		await expect(webFetchTool('https://example.com', request)).rejects.toThrow(
+			'Network unavailable',
 		)
 	})
 
@@ -65,8 +65,8 @@ describe('webFetchTool', () => {
 		)
 		const request = jest.fn().mockResolvedValue(response)
 
-		await expect(webFetchTool('https://example.com', request)).resolves.toBe(
-			'Error: Response exceeded the 1 MB limit.',
+		await expect(webFetchTool('https://example.com', request)).rejects.toThrow(
+			'Response exceeded the 1 MB limit.',
 		)
 	})
 

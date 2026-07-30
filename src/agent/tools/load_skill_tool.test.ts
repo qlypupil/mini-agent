@@ -16,6 +16,8 @@ describe('loadSkillTool', () => {
 	})
 
 	it('rejects unknown skills', () => {
-		expect(loadSkillTool('unknown-skill')).toBe('Error: Unknown skill: unknown-skill')
+		expect(() => loadSkillTool('unknown-skill')).toThrow(
+			'Unknown skill: unknown-skill',
+		)
 	})
 })
