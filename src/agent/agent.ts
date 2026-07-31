@@ -30,6 +30,7 @@ import {
 	createMessagesReset,
 	type ContextPatch,
 } from './runtime/context_patch'
+import { initializeDatabase } from './storage/db'
 import { skills } from './skills'
 import { buildSkillsInstruction } from './skills/prompt'
 import { tools } from './tools'
@@ -53,6 +54,8 @@ export function describeModel(provider: ModelProvider): string {
 	return formatModelSelection(provider)
 }
 
+initializeDatabase()
+
 // SQLite checkpointer 按 threadId 将会话状态保存到当前目录的 .data/checkpointer.db。
 const checkpointer = createCheckpointer()
 const contextCompressionStore = new ContextCompressionStore()
@@ -60,11 +63,14 @@ const contextCompressionStore = new ContextCompressionStore()
 function buildSystemPrompt(): string {
 	const realtimeInstructions =
 		'You are a helpful assistant. For questions about the current date or time, you must use current_time and answer from its result. For other current, recent, or date-sensitive information such as news, weather, prices, or sports, you must use web_search before answering. Do not answer real-time questions from memory. When web_search returns results, answer from those results and do not claim the search failed. Only state that live information could not be retrieved when the tool result explicitly reports an error.'
+	const memoryInstructions =
+		'Use memory_create only for durable user information that can improve future conversations. Create a memory when the user explicitly asks you to remember something, or when they state a stable fact, preference, important event, or skill with clear future value. Write each memory as one concise, standalone statement that can be understood without the current conversation. Do not store temporary task details, one-time requests, model guesses, passwords, API keys, tokens, or other secrets. Do not infer sensitive or personal facts that the user did not explicitly state. Create separate memories for separate facts.'
+	const agentInstructions = `${realtimeInstructions}\n\n${memoryInstructions}`
 
 	const skillsInstruction = buildSkillsInstruction(skills)
 	return skillsInstruction
-		? `${realtimeInstructions}\n\n${skillsInstruction}`
-		: realtimeInstructions
+		? `${agentInstructions}\n\n${skillsInstruction}`
+		: agentInstructions
 }
 
 // 自定义 StateGraph 在模型调用前显式选择 Context，并保留标准工具调用循环。

@@ -13,6 +13,9 @@ import { z } from 'zod'
 import { createChatGraph } from './graph'
 import * as toolOutput from './tool_output'
 import { createCheckpointer } from '../storage/checkpointer'
+import { initializeDatabase } from '../storage/db'
+import { createMemoryCreateTool } from '../tools/memory_create_tool'
+import Database from 'better-sqlite3'
 
 function createTestGraph(model = fakeModel(), testTools: Parameters<typeof createChatGraph>[0]['tools'] = []) {
 	const databasePath = join(
@@ -324,6 +327,71 @@ describe('custom chat graph', () => {
 		expect(result.messages.at(-1)?.content).toBe('final')
 		expect(log).toHaveBeenCalledWith('[Tool] echo')
 		expect(callOrder).toEqual(['[Tool] echo', 'executed'])
+		checkpointer.db.close()
+	})
+
+	it('passes the graph thread ID to memory_create without rewriting history', async () => {
+		const memoryDatabasePath = join(
+			mkdtempSync(join(tmpdir(), 'termclaw-graph-memory-')),
+			'memory.db',
+		)
+		initializeDatabase(memoryDatabasePath)
+		const memoryCreate = createMemoryCreateTool(memoryDatabasePath)
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'memory-call-1',
+					name: 'memory_create',
+					args: {
+						type: 'preference',
+						content: '用户偏好简洁回答。',
+						keywords: ['response style'],
+						importance: 4,
+					},
+				},
+			])
+			.respond(new AIMessage('已记住。'))
+		const { graph, checkpointer } = createTestGraph(model, [memoryCreate])
+		const config = { configurable: { thread_id: 'memory-graph-thread' } }
+		await graph.updateState(config, {
+			messages: [new HumanMessage({ id: 'existing-message', content: '已有历史' })],
+		})
+
+		await graph.invoke(
+			{ messages: [new HumanMessage('请记住我的回答偏好')] },
+			{
+				...config,
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		const database = new Database(memoryDatabasePath, { readonly: true })
+		try {
+			const row = database
+				.prepare('SELECT session_id FROM memory WHERE id = 1')
+				.get()
+			expect(row).toEqual({ session_id: 'memory-graph-thread' })
+		} finally {
+			database.close()
+		}
+
+		const toolMessage = model.calls[1].messages.find(
+			(message) => message.getType() === 'tool',
+		)
+		expect(toolMessage).toMatchObject({
+			name: 'memory_create',
+			tool_call_id: 'memory-call-1',
+			content: '{"status":"created","id":1}',
+		})
+		const snapshot = await graph.getState(config)
+		expect(snapshot.values.messages[0]).toMatchObject({
+			id: 'existing-message',
+			content: '已有历史',
+		})
 		checkpointer.db.close()
 	})
 
