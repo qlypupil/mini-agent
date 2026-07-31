@@ -1,12 +1,12 @@
 # 35 长期记忆创建 Tool 实现说明
 
-## 文档状态
+## Commit 信息
 
-- 状态：已实施并提交
-- 基线提交：`5eb6c7a docs: 记录消息硬上限实现`
-- 实现提交：`4772571 feat: 添加长期记忆创建工具`
-- 数据库初始化与 Tool 创建流程在同一个实现提交中落地。
-- 目标 Tool：`memory_create`
+- Commit：[`4772571`](https://github.com/qlypupil/mini-agent/commit/477257162d62124dcd02b8fc61f291995d282135)
+- 类型：`feat`
+- 状态：当前实现
+- 基线：`5eb6c7a docs: 记录消息硬上限实现`
+- 实现范围：长期记忆数据库初始化、存储层和 `memory_create` Tool。
 
 ## 一、背景
 

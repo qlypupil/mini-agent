@@ -148,3 +148,4 @@
 - 长期记忆创建 Tool 设计文档已移动至 `docs/commits/35-memory-create-tool.md` 并纳入目录索引；相对链接与项目引用检查通过。
 - `docs/commits/` 下 35 篇文档已移除文件名与文档编号的 `00-` 前缀，索引、提交历史与 Roadmap 引用同步更新并完成链接检查。
 - 长期记忆创建流程已在 `4772571` 提交；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（28 个测试套件、147 条测试），覆盖参数化写入、默认值、Schema 边界、运行时 `thread_id` 注入、精简结果及 Graph/checkpointer 历史保持。
+- `docs/commits/35-memory-create-tool.md` 已补齐与前 34 篇一致的 Commit 信息区块，并链接到完整的 `4772571` 实现提交。
