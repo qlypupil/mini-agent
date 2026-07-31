@@ -2,7 +2,11 @@
 
 本文记录当前 `main` 分支的提交演进，说明每次提交解决的问题、关键实现和验证方式。
 
+逐提交的完整实现说明见 [Commit 逐步实现详解](./commits/README.md)。
+
 ## 1. [`015c97e` `init: 初始化 Node TypeScript 与 Jest 开发环境`](https://github.com/qlypupil/mini-agent/commit/015c97ea7a88562ebe82fadf76c60d1e15d61e7d)
+
+**详细说明**：[01 初始化 Node TypeScript 与 Jest 开发环境](./commits/01-015c97e-project-foundation.md)
 
 **目标**：建立可编译、可测试的 Node.js + TypeScript 基础工程。
 
@@ -27,6 +31,8 @@ export function sum(left: number, right: number): number {
 
 ## 2. [`e3d8185` `feat: 添加langchain依赖`](https://github.com/qlypupil/mini-agent/commit/e3d818507ffd5b9ff6b92ace64aebb3348356bbb)
 
+**详细说明**：[02 添加 LangChain 依赖](./commits/02-e3d8185-langchain-dependencies.md)
+
 **目标**：为后续 Agent 能力准备 LangChain 与 LangGraph 依赖。
 
 **主要改动**：
@@ -41,6 +47,8 @@ export function sum(left: number, right: number): number {
 **验证**：依赖已由 pnpm 安装并锁定；此提交尚未创建 Agent 入口。
 
 ## 3. [`b826336` `feat: 添加 Agent CLI 与 Moonshot 集成`](https://github.com/qlypupil/mini-agent/commit/b826336eecc2aa40b89ab6eb222e8e208f3ab033)
+
+**详细说明**：[03 添加 Agent CLI 与 Moonshot 集成](./commits/03-b826336-agent-cli-moonshot.md)
 
 **目标**：实现可在终端运行的 Moonshot Agent，并以流式方式输出模型回复。
 
@@ -75,6 +83,8 @@ for await (const chunk of stream as any) {
 
 ## 4. [`a36d2e8` `feat: 支持配置 Moonshot API 地址`](https://github.com/qlypupil/mini-agent/commit/a36d2e8bad4a9dbb638a5c9e688197cf6fdc7e26)
 
+**详细说明**：[04 支持配置 Moonshot API 地址](./commits/04-a36d2e8-moonshot-base-url.md)
+
 **目标**：移除 Moonshot API 地址的硬编码限制，允许不同环境使用不同的兼容网关或地址。
 
 **主要改动**：
@@ -101,6 +111,8 @@ configuration: {
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build`。
 
 ## 5. [`47a7f8b` `feat: 添加 Agent 会话记忆`](https://github.com/qlypupil/mini-agent/commit/47a7f8ba3e9a1b38c5a0403ca7da7bdd276a8977)
+
+**详细说明**：[05 添加 Agent 会话记忆](./commits/05-47a7f8b-in-process-memory.md)
 
 **目标**：让同一 CLI 进程中、相同 `threadId` 的多轮消息共享上下文。
 
@@ -136,6 +148,8 @@ checkpointer 按 `thread_id` 保存图状态，因此同一线程的下一次调
 
 ## 6. [`08710be` `refactor: 拆分 Agent CLI 命令定义`](https://github.com/qlypupil/mini-agent/commit/08710beaf71647e50af69c50fe53722e0ef23e3f)
 
+**详细说明**：[06 拆分 Agent CLI 命令定义](./commits/06-08710be-cli-command-split.md)
+
 **目标**：将 CLI 命令元信息与聊天交互循环分离，并将项目注册为全局命令。
 
 **主要改动**：
@@ -168,6 +182,8 @@ void createProgram(main).parseAsync(process.argv)
 **验证**：`termclaw --help`、`termclaw --version` 和启动后输入 `exit` 均通过。
 
 ## 7. [`6031d91` `feat: 支持 ESC 取消流式响应`](https://github.com/qlypupil/mini-agent/commit/6031d910061792fbbfc16d17da4e385db3c6d652)
+
+**详细说明**：[07 支持 ESC 取消流式响应](./commits/07-6031d91-escape-cancellation.md)
 
 **目标**：在模型尚未完成流式回复时，让用户按 ESC 立即取消请求并返回输入状态。
 
@@ -208,6 +224,8 @@ if (controller.signal.aborted) {
 
 ## 8. [`10611a3` `feat: 统一 Agent 工具与终端输入`](https://github.com/qlypupil/mini-agent/commit/10611a395947cf2ccf5ff078e83c069e49523359)
 
+**详细说明**：[08 统一 Agent 工具与终端输入](./commits/08-10611a3-tools-and-terminal-input.md)
+
 **目标**：集中管理 Agent 工具元信息，降低工具实现的测试成本，并修复 ESC 功能引入的中文输入重复回显。
 
 **主要改动**：
@@ -239,6 +257,8 @@ activeController = controller
 
 ## 9. [`847adab` `feat: 添加安全文件读取工具`](https://github.com/qlypupil/mini-agent/commit/847adab41a0f7bdfaec1c275bbf7aadfaf0a9854)
 
+**详细说明**：[09 添加安全文件读取工具](./commits/09-847adab-read-file-tool.md)
+
 **目标**：让 Agent 读取当前工作目录中的文本文件，同时限制工具结果泄露项目外文件、Git 元数据和环境变量。
 
 **主要改动**：
@@ -269,6 +289,8 @@ if (segments.some((segment) => segment === '.git' || segment.startsWith('.env'))
 **验证**：`pnpm test --runInBand`、`pnpm typecheck` 与 `pnpm build` 通过；共 3 个测试套件、7 条测试。
 
 ## 10. [`ca73113` `feat: 添加安全文件写入工具`](https://github.com/qlypupil/mini-agent/commit/ca73113780d274a0f8f5596b50b3f11a2dbf1a19)
+
+**详细说明**：[10 添加安全文件写入工具](./commits/10-ca73113-write-file-tool.md)
 
 **目标**：允许 Agent 在当前工作目录中创建或覆写 UTF-8 文本文件，同时防止模型改写目录外、环境变量或 Git 元数据。
 
@@ -302,6 +324,8 @@ await writeFile(writablePath, content, 'utf8')
 - 真实 `termclaw` 集成测试中，模型调用 `write_file` 创建测试文件，文件内容精确匹配后已清理。
 
 ## 11. [`fa286a5` `feat: 添加安全命令执行工具`](https://github.com/qlypupil/mini-agent/commit/fa286a5002f4536b3fe429428efd756c818e2ae4)
+
+**详细说明**：[11 添加安全命令执行工具](./commits/11-fa286a5-exec-tool.md)
 
 **目标**：让 Agent 在当前工作目录中执行受限的只读查询，同时禁止模型将任意字符串交给 shell。
 
@@ -340,6 +364,8 @@ if (outputBytes > MAX_OUTPUT_BYTES) {
 - 真实 `termclaw` 集成测试中，模型调用 `exec` 的 `ls src`，正确列出 `agent`、`index.test.ts` 与 `index.ts`。
 
 ## 12. [`48d945f` `feat: 添加受限 JavaScript 执行工具`](https://github.com/qlypupil/mini-agent/commit/48d945f87c72518f1b7b56b04df5d62aa38f3007)
+
+**详细说明**：[12 添加受限 JavaScript 执行工具](./commits/12-48d945f-run-js-tool.md)
 
 **目标**：让 Agent 在不访问项目文件、网络、子进程或宿主环境变量的前提下，执行受限的 JavaScript 计算并获取结果。
 
@@ -384,6 +410,8 @@ if (outputBytes > MAX_OUTPUT_BYTES) {
 
 ## 13. [`b5ff031` `feat: 接入实时搜索与本机时间工具`](https://github.com/qlypupil/mini-agent/commit/b5ff031b75ac19fab8845fb92bc233c1a79da889)
 
+**详细说明**：[13 接入实时搜索与本机时间工具](./commits/13-b5ff031-realtime-tools.md)
+
 **目标**：让 Agent 能可靠处理实时信息，避免用模型旧知识回答新闻和当前日期。
 
 **主要改动**：
@@ -427,6 +455,8 @@ const currentTime = tool(() => currentTimeTool(), {
 
 ## 14. [`b58df1e` `feat: 添加安全网页抓取工具`](https://github.com/qlypupil/mini-agent/commit/b58df1e96f9cf9ca0d39464ef1a4afd8629a0182)
 
+**详细说明**：[14 添加安全网页抓取工具](./commits/14-b58df1e-web-fetch-tool.md)
+
 **目标**：让 Agent 能获取公开网页的文本内容，同时避免将任意 URL 请求变成访问本机、内网或大文件的入口。
 
 **主要改动**：
@@ -468,6 +498,8 @@ if (receivedBytes > MAX_AGENT_CONTENT_BYTES) {
 - 真实 `termclaw` 调用 `web_fetch` 获取 `https://www.mianshipai.com/`，成功概述“前端面试派”的页面内容。
 
 ## 15. [`ffc4664` `feat: 接入 Agent Skills 与按需 load_skill`](https://github.com/qlypupil/mini-agent/commit/ffc46640d7aeebe121d3c21da8b23ff9490827d4)
+
+**详细说明**：[15 接入 Agent Skills 与按需加载](./commits/15-ffc4664-agent-skills.md)
 
 **目标**：让 Agent 按任务按需加载专业指令，避免把全部 skill 正文塞进 system prompt。
 
@@ -516,6 +548,8 @@ const skillTools = skillNames.length
 
 ## 16. [`83e1334` `build: 打包内置 Skills 并限制 npm 发布内容`](https://github.com/qlypupil/mini-agent/commit/83e133464ea56f25d376692f7eaf11ff8d232f6e)
 
+**详细说明**：[16 打包内置 Skills 并限制 npm 发布内容](./commits/16-83e1334-package-skills.md)
+
 **目标**：确保 `pnpm build` / 全局安装后的运行时仍能发现内置 `SKILL.md`，且发布包不夹带测试与源码。
 
 **主要改动**：
@@ -544,6 +578,8 @@ const skillTools = skillNames.length
 
 ## 17. [`af2db79` `feat: 重构 skills/tools 入口并添加 run_py`](https://github.com/qlypupil/mini-agent/commit/af2db794532c8a38d861ecca080dc19157b42f5c)
 
+**详细说明**：[17 重构入口并添加 Python 工具](./commits/17-af2db79-run-py-and-entry-refactor.md)
+
 **目标**：理顺模块入口，并让 Agent 能用本机 `python3` 执行 Python 代码。
 
 **主要改动**：
@@ -556,6 +592,8 @@ const skillTools = skillNames.length
 
 ## 18. [`0ba7941` `feat: 内置 skill-creator 并复制完整 skill 资源`](https://github.com/qlypupil/mini-agent/commit/0ba7941f42e8b0f9c0fd0d282128d8b536395322)
 
+**详细说明**：[18 内置完整 skill-creator 资源](./commits/18-0ba7941-skill-creator-assets.md)
+
 **目标**：内置 Anthropic `skill-creator`，并保证构建后脚本与资源可用。
 
 **主要改动**：
@@ -566,6 +604,8 @@ const skillTools = skillNames.length
 **验证**：构建产物可发现 `skill-creator`，且 `dist/agent/skills/skill-creator/scripts/` 存在。
 
 ## 19. [`0924ab6` `chore: 将包名与 CLI 重命名为 termclaw`](https://github.com/qlypupil/mini-agent/commit/0924ab63521808faceb364571bd755b87cb3fabf)
+
+**详细说明**：[19 将包名与 CLI 重命名为 termclaw](./commits/19-0924ab6-termclaw-rename.md)
 
 **目标**：避免与 npm 上已占用的 `miniagent` 冲突。
 
@@ -578,6 +618,8 @@ const skillTools = skillNames.length
 
 ## 20. [`71304a8` `feat: 优化终端配色并添加启动欢迎屏`](https://github.com/qlypupil/mini-agent/commit/71304a8066a6fab5fe692c5f659aaadf5b271b5c)
 
+**详细说明**：[20 优化终端配色并添加欢迎屏](./commits/20-71304a8-cli-colors-banner.md)
+
 **目标**：提升终端可读性，并在启动时展示醒目的产品信息。
 
 **主要改动**：
@@ -588,6 +630,8 @@ const skillTools = skillNames.length
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 通过；启动可见品牌标题与信息框。
 
 ## 21. [`7ace0c8` `feat: 使用 SQLite 持久化会话记忆`](https://github.com/qlypupil/mini-agent/commit/7ace0c8fa04956723854bb5c1f469d7ab879f57a)
+
+**详细说明**：[21 使用 SQLite 持久化会话记忆](./commits/21-7ace0c8-sqlite-checkpointer.md)
 
 **目标**：将仅在单个进程内有效的 `MemorySaver` 替换为本地 SQLite 持久化，使同一工作目录中的 CLI 重启后仍能续接会话。
 
@@ -621,6 +665,8 @@ checkpointer 只依赖当前工作目录，因此每个项目目录拥有独立 
 
 ## 22. [`63c5593` `feat: 支持通过 /new 开启新会话`](https://github.com/qlypupil/mini-agent/commit/63c5593)
 
+**详细说明**：[22 支持通过 `/new` 开启新会话](./commits/22-63c5593-new-session-command.md)
+
 **目标**：隔离不同终端聊天的上下文，并支持在不退出 CLI 的情况下开始干净的新会话。
 
 **主要改动**：
@@ -653,6 +699,8 @@ if (commandHandled) continue
 
 ## 23. [`d20145e` `feat: 添加会话列表命令`](https://github.com/qlypupil/mini-agent/commit/d20145e)
 
+**详细说明**：[23 添加 `/sessions` 会话列表命令](./commits/23-d20145e-sessions-command.md)
+
 **目标**：让用户在终端内查看可恢复的近期会话，同时确保查询不发起模型请求。
 
 **主要改动**：
@@ -681,6 +729,8 @@ LangGraph 的 checkpoint ID 按时间递增；窗口函数选出每个线程最�
 
 ## 24. [`f77ed9c` `feat: 支持恢复历史会话`](https://github.com/qlypupil/mini-agent/commit/f77ed9c)
 
+**详细说明**：[24 支持 `/rewind` 恢复历史会话](./commits/24-f77ed9c-rewind-command.md)
+
 **目标**：让用户用 `/sessions` 中的 `thread_id` 恢复历史对话，并避免无效 ID 覆盖当前会话。
 
 **主要改动**：
@@ -708,6 +758,8 @@ return true
 
 ## 25. [`965402a` `feat: 使用终端表格展示会话列表`](https://github.com/qlypupil/mini-agent/commit/965402a)
 
+**详细说明**：[25 使用终端表格展示会话列表](./commits/25-965402a-session-table.md)
+
 **目标**：让 `/sessions` 的会话列表在终端中保持列对齐和清晰边框，替代不适合控制台阅读的 Markdown 管道表格。
 
 **主要改动**：
@@ -734,6 +786,8 @@ return table.toString()
 
 ## 26. [`e8ce501` `feat: 显示 Context 用量并提示新会话`](https://github.com/qlypupil/mini-agent/commit/e8ce501)
 
+**详细说明**：[26 显示 Context 用量并提示新会话](./commits/26-e8ce501-context-usage.md)
+
 **目标**：在每轮回复后展示真实的模型 Context 使用量，并在接近上限时提示用户及时开启新会话。
 
 **主要改动**：
@@ -755,6 +809,8 @@ inputTokens / contextLimit >= 0.8
 **验证**：`pnpm typecheck` 与 `pnpm test --runInBand` 通过，共 16 个测试套件、69 条测试。
 
 ## 27. [`c475136` `feat: 支持手动管理模型 Context 并整理 Agent 结构`](https://github.com/qlypupil/mini-agent/commit/c475136e4d64990010238eb9468bdcac970a4bb6)
+
+**详细说明**：[27 使用 StateGraph 手动管理 Context](./commits/27-c475136-context-stategraph.md)
 
 **目标**：允许用户显式控制下一轮模型请求使用的聊天记录，同时保留只影响下一轮、永久修改当前会话和创建分支会话三种应用方式。
 
@@ -787,6 +843,8 @@ START -> apply_context -> model_request -> END
 
 ## 28. [`2ffc47f` `feat: 实现自动 Context 压缩与模型交互切换`](https://github.com/qlypupil/mini-agent/commit/2ffc47f2a4eb16ffb06ffdbaed9b8acd36307f37)
 
+**详细说明**：[28 自动 Context 压缩与模型切换](./commits/28-2ffc47f-auto-compression-model-switch.md)
+
 **目标**：在 Context 接近模型上限时自动生成累计摘要，并允许用户在 Kimi 与 DeepSeek 之间切换，而不影响 SQLite 中的原始会话历史。
 
 **主要改动**：
@@ -804,6 +862,8 @@ START -> apply_context -> model_request -> END
 
 ## 29. [`ed2840d` `refactor: 将自动 Context 压缩编排移入 Agent 层`](https://github.com/qlypupil/mini-agent/commit/ed2840de59c6a0ed88618d0f673f1fb60a702c7c)
 
+**详细说明**：[29 将自动压缩编排移入 Agent 层](./commits/29-ed2840d-compression-agent-layer.md)
+
 **目标**：让自动 Context 压缩成为 Agent 核心能力，CLI 只负责触发和展示结果。
 
 **主要改动**：
@@ -815,6 +875,8 @@ START -> apply_context -> model_request -> END
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 24 个测试套件、113 条测试。
 
 ## 30. [`b76f541` `feat: 增加手动 Context 压缩命令`](https://github.com/qlypupil/mini-agent/commit/b76f5416638ef082292a2c821d361c5bae8798e9)
+
+**详细说明**：[30 添加 `/compact` 手动压缩命令](./commits/30-b76f541-compact-command.md)
 
 **目标**：允许用户不等待 80% 阈值，直接手动压缩当前会话中尚未处理的历史。
 
@@ -828,6 +890,8 @@ START -> apply_context -> model_request -> END
 
 ## 31. [`57bd4aa` `fix: 统一 Tool 错误状态处理`](https://github.com/qlypupil/mini-agent/commit/57bd4aaf693feb2ede5dbc942ac80e64cc7eb32c)
 
+**详细说明**：[31 统一 Tool 错误协议](./commits/31-57bd4aa-tool-error-protocol.md)
+
 **目标**：让 Tool 执行失败在消息协议和 CLI 展示中都明确标记为失败，避免错误结果显示为成功。
 
 **主要改动**：
@@ -840,6 +904,8 @@ START -> apply_context -> model_request -> END
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 24 个测试套件、117 条测试；回归测试确认异常工具结果的状态为 `error`。
 
 ## 32. [`2fd6681` `feat: 持久化超大 Tool 输出并统一调用展示`](https://github.com/qlypupil/mini-agent/commit/2fd6681a7f2fd8871985c193538e5e7d771901b0)
+
+**详细说明**：[32 持久化超大 Tool 输出](./commits/32-2fd6681-large-tool-output.md)
 
 **目标**：限制超大 Tool 结果占用的模型 Context，并统一工具调用日志与 AI 正文标签的展示时机。
 
@@ -855,6 +921,8 @@ START -> apply_context -> model_request -> END
 
 ## 33. [`668d020` `feat: 简化历史 ToolMessage 上下文`](https://github.com/qlypupil/mini-agent/commit/668d02046f7be675e7fda99d073a1ff4cea603a4)
 
+**详细说明**：[33 简化历史 ToolMessage](./commits/33-668d020-tool-message-simplification.md)
+
 **目标**：减少历史 Tool 结果对模型 Context 的重复占用，同时保持当前工具循环和 checkpointer 原始记录不变。
 
 **主要改动**：
@@ -868,6 +936,8 @@ START -> apply_context -> model_request -> END
 
 ## 34. [`e4a8638` `feat: 增加模型请求消息硬上限`](https://github.com/qlypupil/mini-agent/commit/e4a8638172a4c70e7ae0167a3c03793fec8cf2d2)
 
+**详细说明**：[34 增加模型请求消息硬上限](./commits/34-e4a8638-message-hard-limit.md)
+
 **目标**：在 Tool 输出外置、历史 ToolMessage 简化和 80% 自动摘要之外，为模型请求增加按消息数量计算的最后一道硬保护。
 
 **主要改动**：
@@ -878,6 +948,22 @@ START -> apply_context -> model_request -> END
 - 裁剪只作用于 `modelWithTools.invoke()` 的输入投影，不修改 StateGraph state 或 SQLite checkpointer。
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 25 个测试套件、132 条测试；覆盖 300/301 数量边界、累计摘要固定保留、Tool 调用组完整性及 checkpointer 历史不变。
+
+## 35. [`4772571` `feat: 添加长期记忆创建工具`](https://github.com/qlypupil/mini-agent/commit/477257162d62124dcd02b8fc61f291995d282135)
+
+**详细说明**：[35 长期记忆创建 Tool](./commits/35-memory-create-tool.md)
+
+**目标**：建立与 LangGraph checkpointer 分离的长期记忆写入能力，让模型能够筛选并保存具有后续价值的用户事实、事件、偏好和技能。
+
+**主要改动**：
+
+- 新增独立的 `.data/memory.db`，Agent 启动时幂等创建 `memory` 表和自动刷新 `updated_at` 的触发器，不修改 checkpointer 数据库。
+- 新增参数化 SQLite 存储层和 `memory_create` Tool，支持四种记忆类型、JSON 关键词、`1～5` 重要性及精简创建结果。
+- `session_id` 不暴露给模型，只从 LangGraph 运行时的 `configurable.thread_id` 注入。
+- 在 Agent 系统提示词中明确长期记忆的创建条件，并禁止保存临时任务、模型猜测、密钥和 Token。
+- 增加存储层、Tool Schema 和 Graph 集成测试，验证写入结果、输入边界、会话归属和 checkpointer 原历史保持。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 28 个测试套件、147 条测试。
 
 ## 当前结构
 
@@ -901,6 +987,8 @@ src/agent/
   storage/
     checkpointer.ts           # SQLite checkpointer 工厂
     context_compression.ts    # 自动压缩状态的独立文件缓存
+    db.ts                     # 长期记忆数据库 Schema 初始化
+    memory.ts                 # 长期记忆参数化写入
     sessions.ts               # SQLite 会话查询与终端表格
   skills/                     # Skills 注册、提示词与内置资源
   tools/                      # Tools 注册、实现与安全边界测试
@@ -918,6 +1006,7 @@ tsconfig.build.json          # 仅编译运行时源码的构建配置
 - 自动 Context 压缩状态保存在 `.data/context-compression/`，不会覆盖 SQLite 原历史；压缩依赖独立模型请求，外部模型过载时可能失败并在下一轮重试。
 - 模型请求最多投影 300 条聊天历史，额外的 SystemMessage 不计入该上限；按数量裁剪不能替代按 token 占比触发的自动摘要。
 - 超过 50,000 字符的 Tool 输出保存在 `tool_output/`；模型只接收文件路径与前 2000 字预览。更早的历史 ToolMessage 会在模型请求前临时简化，但 SQLite 中仍保留原始消息。
+- `memory_create` 目前只负责写入长期记忆；尚未实现记忆检索、请求前召回、更新和删除。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。

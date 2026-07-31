@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力、手动与自动 Context 管理及会话内模型切换已完成，等待业务功能定义。
+终端 Agent 基础能力、Context 管理、模型切换与长期记忆创建流程已完成，下一阶段进入长期记忆检索设计。
 
 ## 已完成
 
@@ -22,6 +22,7 @@
 - 抽取 CLI readline 接口创建函数。
 - 支持在 Agent 流式回复期间通过 ESC 取消请求。
 - 新增含 GitHub 提交直达链接的历史说明文档，记录各阶段的关键实现与验证。
+- 为 `docs/commit-history.md` 中 34 个历史提交分别新增 `docs/commits/01`～`34` 实现详解，并建立双向索引，记录各提交当时的问题、方案、边界、验证与后续演进。
 - 补充近期 Agent 与 CLI 关键配置、取消机制和命令工厂注释。
 - 将 search 工具抽离至 `src/agent/tools`，并补充同目录单元测试。
 - 新增 tools 注册表，集中维护工具的名称、描述和输入 schema。
@@ -73,6 +74,10 @@
 - 新增 Tool 大输出持久化：超过 50,000 字符的字符串结果写入 `tool_output/`，模型与 checkpointer 仅接收文件路径和前 2000 字预览，并保留原 `ToolMessage` 调用元数据。
 - 新增历史 ToolMessage 请求前简化：仅在模型输入投影中将较早结果替换为工具使用标记，保留当前轮、最近 3 条历史结果及所有 `read_file` 结果，不修改其他消息或 SQLite checkpointer。
 - 新增模型请求消息数量硬上限：聊天历史超过 300 条时仅向模型投影最近消息，已有累计摘要时固定保留摘要，并删除跨越裁剪边界的不完整 Tool 调用组，不修改 SQLite checkpointer。
+- 新增独立 SQLite 长期记忆数据库：Agent 初始化时幂等创建 `memory` 表和 `updated_at` 自动更新时间触发器，不修改 LangGraph checkpointer 数据库。
+- 新增 `docs/commits/35-memory-create-tool.md`，明确长期记忆创建 Tool 的职责拆分、运行时会话注入、存储规则、模型决策边界、测试与验收标准。
+- 新增 `memory_create` Tool：模型可创建 `fact`、`event`、`preference`、`skill` 四类长期记忆，`session_id` 仅从 LangGraph 运行时注入，结果写入独立 SQLite 数据库。
+- 新增长期记忆写入存储层、模型决策规则及临时数据库测试，不修改或裁剪现有 checkpointer 历史。
 
 ## 进行中
 
@@ -80,7 +85,7 @@
 
 ## 待办
 
-- 待确认首个业务功能范围。
+- 设计 `memory_search` 及请求前召回流程；当前创建的长期记忆尚不会自动注入模型 Context。
 
 ## 阻塞
 
@@ -137,3 +142,9 @@
 - 历史 ToolMessage 简化的纯函数与 StateGraph 非持久化投影回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、128 条测试），覆盖最近 3 条、`read_file`、工具名称回溯、未知工具、当前轮多工具及 checkpointer 原文保留。
 - `docs/commit-history.md` 已补齐自动 Context 压缩、模型切换、手动压缩、Tool 错误协议、超大输出持久化和历史 ToolMessage 简化 6 项提交说明，并将当前结构与后续边界同步至 `668d020`。
 - 模型请求 300 条消息硬上限回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（25 个测试套件、132 条测试），覆盖数量边界、累计摘要固定保留、Tool 调用组完整性及 checkpointer 历史不变。
+- SQLite 长期记忆 Schema 初始化回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（26 个测试套件、134 条测试），覆盖重复初始化、字段默认值及业务字段更新时自动刷新 `updated_at`；构建产物启动后确认 `.data/memory.db` 中存在 `memory` 表和 `memory_update_updated_at` 触发器。
+- 长期记忆创建 Tool 设计文档与 `ROADMAP.md` 状态已完成一致性检查，`git diff --check` 通过；本次仅补充方案文档，未修改运行时代码。
+- 历史 Commit 详解文档一致性检查通过：34 篇编号连续，`docs/commits/README.md` 与 `docs/commit-history.md` 各包含 34 个有效详情链接，文件名短 Hash 与正文 Commit 信息一致；`git diff --check` 通过。
+- 长期记忆创建 Tool 设计文档已移动至 `docs/commits/35-memory-create-tool.md` 并纳入目录索引；相对链接与项目引用检查通过。
+- `docs/commits/` 下 35 篇文档已移除文件名与文档编号的 `00-` 前缀，索引、提交历史与 Roadmap 引用同步更新并完成链接检查。
+- 长期记忆创建流程已在 `4772571` 提交；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（28 个测试套件、147 条测试），覆盖参数化写入、默认值、Schema 边界、运行时 `thread_id` 注入、精简结果及 Graph/checkpointer 历史保持。
