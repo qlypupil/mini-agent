@@ -1,6 +1,13 @@
-import { mkdtempSync } from 'node:fs'
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
 	AIMessage,
 	BaseMessage,
@@ -18,6 +25,7 @@ import { createMemory } from '../storage/memory'
 import { createMemoryCreateTool } from '../tools/memory_create_tool'
 import { createMemoryDeleteTool } from '../tools/memory_delete_tool'
 import { createMemoryRetrieveTool } from '../tools/memory_retrieve_tool'
+import { createProfileUpdateTool } from '../tools/profile_update_tool'
 import Database from 'better-sqlite3'
 
 function createTestGraph(model = fakeModel(), testTools: Parameters<typeof createChatGraph>[0]['tools'] = []) {
@@ -331,6 +339,74 @@ describe('custom chat graph', () => {
 		expect(log).toHaveBeenCalledWith('[Tool] echo')
 		expect(callOrder).toEqual(['[Tool] echo', 'executed'])
 		checkpointer.db.close()
+	})
+
+	it('updates the complete profile without rewriting existing history', async () => {
+		const profileRoot = mkdtempSync(join(process.cwd(), '.profile-graph-'))
+		const profileFilePath = join(profileRoot, '.data/profile.md')
+		const oldProfile = '## 基本身份\n\n- 姓名：Pupil\n'
+		const updatedProfile = `${oldProfile}\n## 技能\n\n- TypeScript`
+		mkdirSync(dirname(profileFilePath), { recursive: true })
+		writeFileSync(profileFilePath, oldProfile, 'utf8')
+		const profileUpdate = createProfileUpdateTool(profileFilePath)
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'profile-update-call-1',
+					name: 'profile_update',
+					args: { content: updatedProfile },
+				},
+			])
+			.respond(new AIMessage('已更新用户画像。'))
+		const { graph, checkpointer } = createTestGraph(model, [profileUpdate])
+		const config = { configurable: { thread_id: 'profile-update-thread' } }
+
+		try {
+			await graph.updateState(config, {
+				messages: [
+					new HumanMessage({ id: 'existing-message', content: '已有历史' }),
+				],
+			})
+			await graph.invoke(
+				{ messages: [new HumanMessage('我还会 TypeScript')] },
+				{
+					...config,
+					context: {
+						model: undefined,
+						contextControl: undefined,
+						contextCompression: undefined,
+					},
+				},
+			)
+
+			expect(model.callCount).toBe(2)
+			const toolMessage = model.calls[1].messages.find(
+				(message) => message.getType() === 'tool',
+			)
+			expect(toolMessage).toMatchObject({
+				name: 'profile_update',
+				tool_call_id: 'profile-update-call-1',
+			})
+			const toolResult = JSON.parse(String(toolMessage?.content)) as {
+				status: string
+				backup: string
+			}
+			expect(toolResult.status).toBe('updated')
+			expect(readFileSync(profileFilePath, 'utf8')).toBe(`${updatedProfile}\n`)
+			expect(
+				readFileSync(join(dirname(profileFilePath), toolResult.backup), 'utf8'),
+			).toBe(oldProfile)
+			expect(readdirSync(dirname(profileFilePath))).toHaveLength(2)
+
+			const snapshot = await graph.getState(config)
+			expect(snapshot.values.messages[0]).toMatchObject({
+				id: 'existing-message',
+				content: '已有历史',
+			})
+		} finally {
+			checkpointer.db.close()
+			rmSync(profileRoot, { recursive: true, force: true })
+		}
 	})
 
 	it('passes the graph thread ID to memory_create without rewriting history', async () => {

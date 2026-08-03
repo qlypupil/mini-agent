@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力、Context 管理、模型切换、长期记忆创建、全文索引、检索与按 ID 删除 Tool 已完成；创建和检索已通过 Kimi、DeepSeek 真实回归，删除流程待真实模型回归。
+终端 Agent 基础能力、Context 管理、模型切换、Prompt 模块、用户画像本地读取与全量更新、长期记忆创建、全文索引、检索与按 ID 删除 Tool 已完成；记忆创建和检索已通过 Kimi、DeepSeek 真实回归，Profile 更新与记忆删除流程待真实模型回归。
 
 ## 已完成
 
@@ -83,6 +83,9 @@
 - 新增 `docs/commits/37-memory-retrieve-tool.md`，明确模型调用边界、多关键词 FTS5 查询、相关性排序、只读返回协议、安全约束、测试方案与后续自动召回边界。
 - 新增 `memory_retrieve` Tool：当前 Context 无答案且用户询问已保存的个人记忆时，模型可整理关键词并通过只读 FTS5 查询检索最多 5 条长期记忆。
 - 新增 `memory_delete` Tool：用户明确要求删除或遗忘长期记忆时，模型先通过检索确定唯一 ID，再删除主表记录并由 SQLite 触发器同步清理 FTS5 索引。
+- 抽离独立 `prompt.ts`，集中构建 System Prompt；`profilePrompt` 从当前目录 `.data/profile.md` 读取用户画像，以 `<profile_info>` 包裹，缺失或空内容使用空标签；模板范围内的当前稳定状态写入 Profile，具备长期价值的带时间经历写为 `event` memory，临时琐事不持久化，并禁止从事件推断未陈述信息。
+- 新增 `profile_update` Tool：模型将新变化与 `<profile_info>` 中仍有效的信息合并为完整 Markdown，Tool 在覆盖 `.data/profile.md` 前保留唯一历史备份，并通过临时文件原子替换主文件。
+- `profile_update` 固定写入当前工作目录，拒绝模型指定路径、空内容、外层标签、目录及符号链接目标；Tool description 不暴露路径和备份实现。
 
 ## 进行中
 
@@ -90,6 +93,7 @@
 
 ## 待办
 
+- 使用真实 Kimi 和 DeepSeek 验证 Profile 首次记录、单字段更正、多字段合并、信息删除，以及“当前状态 / 带时间事件”的分类决策。
 - 使用真实 Kimi 和 DeepSeek 补充冲突记忆的检索与回答回归。
 - 使用真实 Kimi 和 DeepSeek 验证单一目标、多个候选和不存在目标的长期记忆删除决策。
 - 评估请求前自动召回与非持久化 Context 注入。
@@ -164,3 +168,5 @@
 - 长期记忆检索流程已在 `b4482e2` 提交，`docs/commits/37-memory-retrieve-tool.md`、提交目录和历史时间线已同步真实 Commit 信息。
 - `memory_delete` 存储层、Tool Schema 与“先检索再删除”Graph 工具循环回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（30 个测试套件、172 条测试）。构建产物已通过临时数据库验证 Tool 注册、主表删除和 FTS5 索引同步清理，真实 Kimi、DeepSeek 删除决策回归待办。
 - 长期记忆删除流程已在 `f02c5fa` 提交，`docs/commits/38-memory-delete-tool.md`、提交目录和历史时间线已同步真实 Commit 信息。
+- Prompt 模块抽离、Profile 文件缺失与空内容回退、非空信息包裹、读取错误边界、Memory 排除规则及系统提示词顺序回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（31 个测试套件、176 条测试）。
+- `profile_update` 全量更新、历史备份、原子替换、路径与符号链接边界、Prompt 规则、统一注册和 Graph 工具循环回归通过；当前状态与带时间事件的分类回归已补齐，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（32 个测试套件、188 条测试）。构建产物已在独立临时目录完成创建、更新和备份验证；本地实际误分类通过备份修正，迁移后的 `event` memory 可由正式检索流程命中。
