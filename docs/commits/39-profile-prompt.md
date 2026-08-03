@@ -2,7 +2,7 @@
 
 ## Commit 信息
 
-- Commit：待提交
+- Commit：[`0e52385`](https://github.com/qlypupil/mini-agent/commit/0e523851fd7102ea73389e20b3d4175c6ef5db20)
 - 类型：`feat`
 - 状态：当前实现
 - 基线：`474e2ac docs: 补齐长期记忆删除提交信息`
