@@ -2,7 +2,7 @@
 
 ## Commit 信息
 
-- Commit：待提交
+- Commit：[`26c2082`](https://github.com/qlypupil/mini-agent/commit/26c2082268abb94adf351a82a88d6ed566c0e9c1)
 - 类型：`feat`
 - 状态：当前实现
 - 基线：`23a6baf docs: 补齐用户画像提交信息`

@@ -53,7 +53,7 @@
 | 37 | `b4482e2` | 添加长期记忆检索 Tool | [37](./37-memory-retrieve-tool.md) |
 | 38 | `f02c5fa` | 添加长期记忆删除 Tool | [38](./38-memory-delete-tool.md) |
 | 39 | `0e52385` | 增加用户画像读写与记忆分类规则 | [39](./39-profile-prompt.md) |
-| 40 | 待提交 | 增加 Tool 权限分级并调整执行边界 | [40](./40-tool-permission-level.md) |
+| 40 | `26c2082` | 增加 Tool 权限分级并调整执行边界 | [40](./40-tool-permission-level.md) |
 
 ## 核对方式
 

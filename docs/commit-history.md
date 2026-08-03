@@ -1029,6 +1029,22 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过，共 32 个测试套件、188 条测试；构建产物在独立临时目录完成 Profile 创建、更新和备份验证。
 
+## 40. [`26c2082` `feat: 添加工具权限分级并调整执行边界`](https://github.com/qlypupil/mini-agent/commit/26c2082268abb94adf351a82a88d6ed566c0e9c1)
+
+**详细说明**：[40 Tool 权限分级与执行边界](./commits/40-tool-permission-level.md)
+
+**目标**：为后续统一授权流程建立可信的 Tool 权限元数据，同时将文件和命令执行范围从各 Tool 的临时限制中解耦。
+
+**主要改动**：
+
+- 新增 `ToolPermissionLevel`、`PermissionedTool` 和 `withPermissionLevel()`，为全部 13 个注册 Tool 设置 `read`、`write`、`exec`、`network` 或 `db` 属性，并通过注册表类型约束防止漏配。
+- `read_file`、`write_file` 支持绝对路径、`../` 相对路径和跨目录符号链接，继续拒绝 `.env*`、`.git` 和非普通文件。
+- System Prompt 要求模型为明确的文件请求调用对应 Tool，允许后续权限层放行、确认或拒绝，并禁止拒绝后改用其他 Tool 绕过。
+- `exec` 输入改为单个完整 `command` 字符串并通过 shell 执行，移除原命令白名单、结构化路径参数和项目目录限制，支持管道、重定向及状态修改。
+- `exec` 继续保留 5 秒超时、64 KB 输出上限、非零退出错误和 `permission_level: 'exec'`；当前权限元数据尚未执行拦截。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 33 个测试套件、197 条测试；Kimi、DeepSeek 均自主调用 `write_file` 写入工作目录外的临时文件，构建产物中的注册 `exec` 成功执行原白名单外的管道命令。
+
 ## 当前结构
 
 ```text
