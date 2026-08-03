@@ -163,3 +163,4 @@
 - `memory_retrieve` 真实模型回归通过：Kimi 正确处理命中、Context 复用和无结果；DeepSeek 首轮无结果场景未调用 Tool，收紧“宣称无记忆前必须检索”规则后复测通过。验证使用独立临时数据库，未污染项目长期记忆。
 - 长期记忆检索流程已在 `b4482e2` 提交，`docs/commits/37-memory-retrieve-tool.md`、提交目录和历史时间线已同步真实 Commit 信息。
 - `memory_delete` 存储层、Tool Schema 与“先检索再删除”Graph 工具循环回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（30 个测试套件、172 条测试）。构建产物已通过临时数据库验证 Tool 注册、主表删除和 FTS5 索引同步清理，真实 Kimi、DeepSeek 删除决策回归待办。
+- 长期记忆删除流程已在 `f02c5fa` 提交，`docs/commits/38-memory-delete-tool.md`、提交目录和历史时间线已同步真实 Commit 信息。

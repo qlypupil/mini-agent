@@ -1,10 +1,11 @@
 # 38 长期记忆删除 Tool 实现说明
 
-## 文档状态
+## Commit 信息
 
-- 状态：已实现，待提交
-- 建议提交：`feat: 添加长期记忆删除工具`
-- 前置实现：[`b4482e2`](https://github.com/qlypupil/mini-agent/commit/b4482e28d90409cc59b3705033dafe564daafbca) `feat: 添加长期记忆检索工具`
+- Commit：[`f02c5fa`](https://github.com/qlypupil/mini-agent/commit/f02c5fac52865c3b6e6c73e8c49e9af5c404a17a)
+- 类型：`feat`
+- 状态：当前实现
+- 基线：`34e26ea docs: 补齐长期记忆检索提交信息`
 - 实现范围：`memory_delete` Tool、按 ID 删除、FTS5 触发器同步、模型调用规则与回归测试。
 
 ## 一、背景

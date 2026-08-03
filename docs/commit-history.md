@@ -997,6 +997,22 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 29 个测试套件、161 条测试；构建产物临时数据库回归通过。Kimi 与 DeepSeek 真实验证均能在命中和无结果场景调用 Tool，并在当前 Context 已有答案时避免重复检索。
 
+## 38. [`f02c5fa` `feat: 添加长期记忆删除工具`](https://github.com/qlypupil/mini-agent/commit/f02c5fac52865c3b6e6c73e8c49e9af5c404a17a)
+
+**详细说明**：[38 长期记忆删除 Tool](./commits/38-memory-delete-tool.md)
+
+**目标**：让模型在用户明确要求删除或遗忘长期记忆时，先确定唯一记录 ID，再安全删除主表记录及其全文索引。
+
+**主要改动**：
+
+- 在存储层新增参数化 `DELETE FROM memory WHERE id = ?`，并通过执行结果区分 `deleted` 与 `not_found`。
+- 复用 `memory_fts_after_delete` 触发器同步清理 FTS5 词项，不在业务层重复操作全文索引。
+- 新增 `memory_delete` Tool，模型输入只包含单个安全正整数 ID，并将 Tool 加入统一注册表。
+- 在系统提示词中约束删除意图、先检索后删除、多个候选必须澄清以及禁止猜测 ID。
+- 增加存储层、Tool Schema 和 Graph 集成测试，覆盖主表及索引同步删除、幂等结果、输入边界、连续检索删除工具循环和 checkpointer 历史保持。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 30 个测试套件、172 条测试；构建产物使用临时数据库确认 `memory_delete` 已注册，并在删除后得到 `memory=0`、`memory_fts=0`。真实 Kimi、DeepSeek 删除决策回归保留为待办。
+
 ## 当前结构
 
 ```text
@@ -1020,7 +1036,7 @@ src/agent/
     checkpointer.ts           # SQLite checkpointer 工厂
     context_compression.ts    # 自动压缩状态的独立文件缓存
     db.ts                     # 长期记忆主表、FTS5 索引与同步触发器初始化
-    memory.ts                 # 长期记忆参数化写入与只读 FTS5 检索
+    memory.ts                 # 长期记忆参数化写入、只读 FTS5 检索与按 ID 删除
     sessions.ts               # SQLite 会话查询与终端表格
   skills/                     # Skills 注册、提示词与内置资源
   tools/                      # Tools 注册、实现与安全边界测试
@@ -1038,7 +1054,7 @@ tsconfig.build.json          # 仅编译运行时源码的构建配置
 - 自动 Context 压缩状态保存在 `.data/context-compression/`，不会覆盖 SQLite 原历史；压缩依赖独立模型请求，外部模型过载时可能失败并在下一轮重试。
 - 模型请求最多投影 300 条聊天历史，额外的 SystemMessage 不计入该上限；按数量裁剪不能替代按 token 占比触发的自动摘要。
 - 超过 50,000 字符的 Tool 输出保存在 `tool_output/`；模型只接收文件路径与前 2000 字预览。更早的历史 ToolMessage 会在模型请求前临时简化，但 SQLite 中仍保留原始消息。
-- `memory_create` 负责写入长期记忆，`memory_retrieve` 支持模型按需检索；尚未实现请求前自动召回、记忆更新和删除。
+- `memory_create`、`memory_retrieve` 和 `memory_delete` 分别负责长期记忆写入、按需检索和按 ID 删除；尚未实现请求前自动召回和记忆更新，删除流程仍待真实 Kimi、DeepSeek 决策回归。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
