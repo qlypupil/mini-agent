@@ -49,7 +49,7 @@
 | 33 | `668d020` | 简化历史 ToolMessage | [33](./33-tool-message-simplification.md) |
 | 34 | `e4a8638` | 增加模型请求消息硬上限 | [34](./34-message-hard-limit.md) |
 | 35 | `4772571` | 添加长期记忆创建工具 | [35](./35-memory-create-tool.md) |
-| 36 | 待提交 | 添加长期记忆全文索引 | [36](./36-memory-full-text-index.md) |
+| 36 | `defe61d` | 添加长期记忆全文索引 | [36](./36-memory-full-text-index.md) |
 
 ## 核对方式
 

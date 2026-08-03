@@ -965,7 +965,7 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 28 个测试套件、147 条测试。
 
-## 36. 待提交 `feat: 添加长期记忆全文索引`
+## 36. [`defe61d` `feat: 添加长期记忆全文索引`](https://github.com/qlypupil/mini-agent/commit/defe61dd011e7df346956f9cc578973792d888b0)
 
 **详细说明**：[36 长期记忆全文索引](./commits/36-memory-full-text-index.md)
 

@@ -2,7 +2,7 @@
 
 ## Commit 信息
 
-- Commit：待提交
+- Commit：[`defe61d`](https://github.com/qlypupil/mini-agent/commit/defe61dd011e7df346956f9cc578973792d888b0)
 - 类型：`feat`
 - 状态：当前实现
 - 基线：`557c56b docs: 移除 Commit 文档文件名中的短 Hash`
