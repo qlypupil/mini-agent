@@ -23,6 +23,7 @@
 - 支持在 Agent 流式回复期间通过 ESC 取消请求。
 - 新增含 GitHub 提交直达链接的历史说明文档，记录各阶段的关键实现与验证。
 - 为 `docs/commit-history.md` 中 34 个历史提交分别新增 `docs/commits/01`～`34` 实现详解，并建立双向索引，记录各提交当时的问题、方案、边界、验证与后续演进。
+- 移除 `docs/commits/` 下 01～34 篇历史文档文件名中的短 Commit Hash，并同步更新索引与提交历史链接。
 - 补充近期 Agent 与 CLI 关键配置、取消机制和命令工厂注释。
 - 将 search 工具抽离至 `src/agent/tools`，并补充同目录单元测试。
 - 新增 tools 注册表，集中维护工具的名称、描述和输入 schema。
@@ -149,3 +150,4 @@
 - `docs/commits/` 下 35 篇文档已移除文件名与文档编号的 `00-` 前缀，索引、提交历史与 Roadmap 引用同步更新并完成链接检查。
 - 长期记忆创建流程已在 `4772571` 提交；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（28 个测试套件、147 条测试），覆盖参数化写入、默认值、Schema 边界、运行时 `thread_id` 注入、精简结果及 Graph/checkpointer 历史保持。
 - `docs/commits/35-memory-create-tool.md` 已补齐与前 34 篇一致的 Commit 信息区块，并链接到完整的 `4772571` 实现提交。
+- `docs/commits/` 文件名与引用一致性检查通过：35 篇编号文档均存在，01～34 文件名不再包含短 Commit Hash，两个索引页的相对链接全部有效；`git diff --check` 通过。
