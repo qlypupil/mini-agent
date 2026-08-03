@@ -159,3 +159,4 @@
 - `memory_retrieve` Tool 设计已完成本机 FTS5 查询验证；`docs/commits/` 共 37 篇编号文档连续，40 个 Markdown 文件的相对链接检查与 `git diff --check` 通过，本次未修改运行时代码。
 - `memory_retrieve` 存储层、Tool Schema 与 Graph 工具循环回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（29 个测试套件、161 条测试），构建产物已通过临时数据库验证注册与检索结果。
 - `memory_retrieve` 真实模型回归通过：Kimi 正确处理命中、Context 复用和无结果；DeepSeek 首轮无结果场景未调用 Tool，收紧“宣称无记忆前必须检索”规则后复测通过。验证使用独立临时数据库，未污染项目长期记忆。
+- 长期记忆检索流程已在 `b4482e2` 提交，`docs/commits/37-memory-retrieve-tool.md`、提交目录和历史时间线已同步真实 Commit 信息。

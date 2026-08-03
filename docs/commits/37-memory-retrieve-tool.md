@@ -1,11 +1,12 @@
 # 37 长期记忆检索 Tool 设计说明
 
-## 文档状态
+## Commit 信息
 
-- 状态：已实现，待提交
-- 目标类型：`feat`
-- 前置实现：[`defe61d`](https://github.com/qlypupil/mini-agent/commit/defe61dd011e7df346956f9cc578973792d888b0) `feat: 添加长期记忆全文索引`
-- 设计范围：`memory_retrieve` Tool、FTS5 查询、模型调用规则、返回协议与测试方案。
+- Commit：[`b4482e2`](https://github.com/qlypupil/mini-agent/commit/b4482e28d90409cc59b3705033dafe564daafbca)
+- 类型：`feat`
+- 状态：当前实现
+- 基线：`5d95a22 docs: 补齐长期记忆全文索引提交信息`
+- 实现范围：`memory_retrieve` Tool、FTS5 查询、模型调用规则、返回协议与测试方案。
 
 ## 一、背景
 

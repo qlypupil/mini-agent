@@ -981,6 +981,22 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 28 个测试套件、148 条测试；实际 `.data/memory.db` 已创建 `memory_fts` 和三个同步触发器。
 
+## 37. [`b4482e2` `feat: 添加长期记忆检索工具`](https://github.com/qlypupil/mini-agent/commit/b4482e28d90409cc59b3705033dafe564daafbca)
+
+**详细说明**：[37 长期记忆检索 Tool](./commits/37-memory-retrieve-tool.md)
+
+**目标**：让模型在当前 Context 无法回答用户的个人记忆问题时，能够整理关键词并只读检索 SQLite 长期记忆。
+
+**主要改动**：
+
+- 在存储层新增参数化 FTS5 查询，将关键词去重并转义为安全短语，通过 `OR` 扩大召回范围。
+- 使用 `bm25(memory_fts, 1.0, 2.0)` 相关性排序，并以重要性、更新时间和 ID 依次打破平局，固定最多返回 5 条。
+- 新增 `memory_retrieve` Tool，模型输入只包含受限关键词数组，结果使用 `found` / `not_found` 状态且不暴露 `session_id` 和内部 score。
+- 将 Tool 加入统一注册表，并在系统提示词中约束调用条件、无结果禁止猜测、宣称无记忆前必须检索以及检索内容不能覆盖当前指令。
+- 增加存储层、Tool Schema 和 Graph 集成测试，覆盖内容与关键词命中、特殊字符转义、结果上限、只读执行和 checkpointer 历史保持。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 29 个测试套件、161 条测试；构建产物临时数据库回归通过。Kimi 与 DeepSeek 真实验证均能在命中和无结果场景调用 Tool，并在当前 Context 已有答案时避免重复检索。
+
 ## 当前结构
 
 ```text
@@ -1004,7 +1020,7 @@ src/agent/
     checkpointer.ts           # SQLite checkpointer 工厂
     context_compression.ts    # 自动压缩状态的独立文件缓存
     db.ts                     # 长期记忆主表、FTS5 索引与同步触发器初始化
-    memory.ts                 # 长期记忆参数化写入
+    memory.ts                 # 长期记忆参数化写入与只读 FTS5 检索
     sessions.ts               # SQLite 会话查询与终端表格
   skills/                     # Skills 注册、提示词与内置资源
   tools/                      # Tools 注册、实现与安全边界测试
@@ -1022,7 +1038,7 @@ tsconfig.build.json          # 仅编译运行时源码的构建配置
 - 自动 Context 压缩状态保存在 `.data/context-compression/`，不会覆盖 SQLite 原历史；压缩依赖独立模型请求，外部模型过载时可能失败并在下一轮重试。
 - 模型请求最多投影 300 条聊天历史，额外的 SystemMessage 不计入该上限；按数量裁剪不能替代按 token 占比触发的自动摘要。
 - 超过 50,000 字符的 Tool 输出保存在 `tool_output/`；模型只接收文件路径与前 2000 字预览。更早的历史 ToolMessage 会在模型请求前临时简化，但 SQLite 中仍保留原始消息。
-- `memory_create` 目前只负责写入长期记忆；`memory_fts` 会同步新数据，但尚未实现记忆检索、请求前召回、更新和删除。
+- `memory_create` 负责写入长期记忆，`memory_retrieve` 支持模型按需检索；尚未实现请求前自动召回、记忆更新和删除。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
