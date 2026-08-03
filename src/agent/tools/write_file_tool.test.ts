@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
-import { join, relative, resolve } from 'node:path'
+import { join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { writeFileTool } from './write_file_tool'
 
@@ -41,16 +41,23 @@ describe('writeFileTool', () => {
 		)
 	})
 
-	it('rejects absolute paths', async () => {
-		await expect(
-			writeFileTool(resolve(process.cwd(), 'package.json'), 'content'),
-		).rejects.toThrow('Only relative file paths are allowed.')
+	it('creates a file using an absolute path outside the current directory', async () => {
+		const path = join(outsideDirectory, 'absolute.txt')
+
+		await expect(writeFileTool(path, 'absolute content')).resolves.toBe(
+			`Wrote file: ${path}`,
+		)
+		await expect(readFile(path, 'utf8')).resolves.toBe('absolute content')
 	})
 
-	it('rejects paths outside the current directory', async () => {
-		await expect(writeFileTool('../outside.txt', 'content')).rejects.toThrow(
-			'Only files in the current directory can be written.',
+	it('creates a file using a relative path outside the current directory', async () => {
+		const outsideFile = join(outsideDirectory, 'relative.txt')
+		const path = relative(process.cwd(), outsideFile)
+
+		await expect(writeFileTool(path, 'relative content')).resolves.toBe(
+			`Wrote file: ${path}`,
 		)
+		await expect(readFile(outsideFile, 'utf8')).resolves.toBe('relative content')
 	})
 
 	it('rejects sensitive environment files', async () => {
@@ -59,15 +66,35 @@ describe('writeFileTool', () => {
 		)
 	})
 
-	it('rejects symbolic links that point outside the current directory', async () => {
+	it('writes through a symbolic link that points outside the current directory', async () => {
 		const outsideFile = join(outsideDirectory, 'outside.txt')
 		const linkPath = join(insideDirectory, 'outside-link.txt')
 		await writeFile(outsideFile, 'outside content')
 		await symlink(outsideFile, linkPath)
 
-		await expect(writeFileTool(insidePath('outside-link.txt'), 'content')).rejects.toThrow(
-			'Only files in the current directory can be written.',
+		await expect(
+			writeFileTool(insidePath('outside-link.txt'), 'updated content'),
+		).resolves.toBe(
+			`Wrote file: ${insidePath('outside-link.txt')}`,
 		)
-		await expect(readFile(outsideFile, 'utf8')).resolves.toBe('outside content')
+		await expect(readFile(outsideFile, 'utf8')).resolves.toBe('updated content')
+	})
+
+	it('rejects symbolic links that resolve to sensitive files', async () => {
+		const sensitiveFile = join(outsideDirectory, '.env.secret')
+		const linkPath = join(insideDirectory, 'secret-link.txt')
+		await writeFile(sensitiveFile, 'secret')
+		await symlink(sensitiveFile, linkPath)
+
+		await expect(
+			writeFileTool(insidePath('secret-link.txt'), 'updated secret'),
+		).rejects.toThrow('Sensitive files cannot be written.')
+		await expect(readFile(sensitiveFile, 'utf8')).resolves.toBe('secret')
+	})
+
+	it('rejects directories', async () => {
+		await expect(writeFileTool(outsideDirectory, 'content')).rejects.toThrow(
+			'The requested path is not a file.',
+		)
 	})
 })

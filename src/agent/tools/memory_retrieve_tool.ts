@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { DB_PATH } from '../storage/db'
 import { retrieveMemories } from '../storage/memory'
+import { withPermissionLevel } from './tool_permission'
 
 export const memoryRetrieveSchema = z.object({
 	keywords: z
@@ -28,12 +29,15 @@ export function memoryRetrieveTool(
 }
 
 export function createMemoryRetrieveTool(databasePath = DB_PATH) {
-	return tool((input) => memoryRetrieveTool(input, databasePath), {
-		name: 'memory_retrieve',
-		description:
-			'Retrieve durable long-term memories relevant to a set of keywords. Use when the user asks about previously saved personal facts, preferences, events, or skills and the current context does not contain enough information to answer. Always call this tool before claiming that no saved memory exists for the current topic.',
-		schema: memoryRetrieveSchema,
-	})
+	return withPermissionLevel(
+		tool((input) => memoryRetrieveTool(input, databasePath), {
+			name: 'memory_retrieve',
+			description:
+				'Retrieve durable long-term memories relevant to a set of keywords. Use when the user asks about previously saved personal facts, preferences, events, or skills and the current context does not contain enough information to answer. Always call this tool before claiming that no saved memory exists for the current topic.',
+			schema: memoryRetrieveSchema,
+		}),
+		'db',
+	)
 }
 
 export const memoryRetrieve = createMemoryRetrieveTool()

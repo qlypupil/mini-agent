@@ -1,23 +1,8 @@
 import { lstat, realpath, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { dirname, resolve, sep } from 'node:path'
 
-function assertInsideRoot(root: string, target: string): string {
-	const relativePath = relative(root, target)
-
-	// 相对路径以 .. 开头或仍是绝对路径，表示目标已越出当前工作目录。
-	if (
-		relativePath === '..' ||
-		relativePath.startsWith(`..${sep}`) ||
-		isAbsolute(relativePath)
-	) {
-		throw new Error('Only files in the current directory can be written.')
-	}
-
-	return relativePath
-}
-
-function assertSafePath(relativePath: string): void {
-	const segments = relativePath.split(sep)
+function assertSafePath(filePath: string): void {
+	const segments = resolve(filePath).split(sep)
 
 	// 文件内容由模型提供，禁止模型覆写环境变量和 Git 元数据。
 	if (segments.some((segment) => segment === '.git' || segment.startsWith('.env'))) {
@@ -26,17 +11,13 @@ function assertSafePath(relativePath: string): void {
 }
 
 async function resolveWritablePath(filePath: string): Promise<string> {
-	if (isAbsolute(filePath)) {
-		throw new Error('Only relative file paths are allowed.')
-	}
+	// 相对路径以当前目录为基准；绝对路径和当前目录外的目标均允许访问。
+	const requestedPath = resolve(filePath)
+	assertSafePath(requestedPath)
 
-	const root = await realpath(process.cwd())
-	const requestedPath = resolve(root, filePath)
-	assertSafePath(assertInsideRoot(root, requestedPath))
-
-	// 新建文件时父目录必须已经存在，并且不能通过父目录符号链接逃出根目录。
+	// 新建文件时父目录必须已经存在；解析后再次阻止敏感目录。
 	const resolvedParentPath = await realpath(dirname(requestedPath))
-	assertSafePath(assertInsideRoot(root, resolvedParentPath))
+	assertSafePath(resolvedParentPath)
 
 	try {
 		// lstat 保留符号链接本身的信息，避免在判断文件类型前隐式跟随链接。
@@ -53,9 +34,9 @@ async function resolveWritablePath(filePath: string): Promise<string> {
 		throw error
 	}
 
-	// 覆写已有文件前解析符号链接，防止链接指向当前目录外的文件。
+	// 覆写已有文件前解析符号链接，避免安全名称的链接指向敏感文件。
 	const resolvedPath = await realpath(requestedPath)
-	assertSafePath(assertInsideRoot(root, resolvedPath))
+	assertSafePath(resolvedPath)
 
 	if (!(await lstat(resolvedPath)).isFile()) {
 		throw new Error('The requested path is not a file.')
@@ -73,6 +54,6 @@ export async function writeFileTool(
 	// writeFile 会创建不存在的普通文件，或以 UTF-8 内容完整覆写已有文件。
 	await writeFile(writablePath, content, 'utf8')
 
-	// 返回相对路径，便于 Agent 向用户确认实际写入目标而不暴露绝对工作目录。
+	// 原样返回调用路径，便于 Agent 向用户确认实际写入目标。
 	return `Wrote file: ${filePath}`
 }

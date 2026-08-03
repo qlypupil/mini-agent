@@ -1,6 +1,6 @@
 # Tool 调用链分析
 
-主人，结论：当前 Tool 调用链已经完整可用，LangGraph 循环和 Context 处理是合理的；但还不适合完全自主执行。工具失败状态误报和超大字符串输出直接进入 Context 的问题已修复，当前最需要处理的是 run_py 未沙箱化和写操作无确认。
+主人，结论：当前 Tool 调用链已经完整可用，LangGraph 循环和 Context 处理是合理的；但还不适合完全自主执行。工具失败状态误报和超大字符串输出直接进入 Context 的问题已修复，当前最需要处理的是 `run_py` 未沙箱化，以及文件写入和完整 shell 命令执行均无授权节点。
 
 ## 当前链路
 
@@ -9,19 +9,33 @@ model_request：绑定全部 Tools 并调用模型 → 模型返回 tool_calls �
 ToolNode：校验参数并执行工具 → ToolMessage 写入 State
 → 再次调用模型 → 无 tool_calls 后结束并保存 Checkpoint
 
-模型每次请求都会动态绑定完整工具列表，代码位于 src/agent/runtime/graph.ts:81 。目前共 9 个工具：
+模型每次请求都会动态绑定完整工具列表，代码位于 `src/agent/runtime/graph.ts`。目前共 13 个工具：
 
 - 文件：read_file、write_file
 - 命令：exec
 - 代码：run_js、run_py
 - 实时信息：current_time、web_search、web_fetch
 - Skills：load_skill
+- 用户画像：profile_update
+- 长期记忆：memory_create、memory_retrieve、memory_delete
 
-统一注册入口是 src/agent/tools/index.ts:141 。
+统一注册入口是 `src/agent/tools/index.ts`。
 
 Tool 调用和结果都会作为 AIMessage +
 ToolMessage 保存进 SQLite。Context 压缩会保证两者成组保留，但只修改下轮请求的 Context 投影，不修改原始 Checkpoint，src/agent/runtime/
 context.ts:49 。
+
+## Tool 权限分级
+
+所有注册 Tool 已增加 `permission_level` 属性，作为后续授权节点的可信元数据。权限分为 `read`、`write`、`exec`、`network` 和 `db`；当前实现只标注能力类别，不改变调用流程，也不自动阻止任何 ToolCall。
+
+完整映射、文件访问边界、类型设计和验收标准见 [40 Tool 权限分级与文件访问边界实现说明](../commits/40-tool-permission-level.md)。真正的权限限制仍需在 `model_request -> tools` 之间增加授权判断，不能依赖模型自行提交权限字段。
+
+`read_file` 和 `write_file` 已支持绝对路径、`../` 相对路径和跨目录符号链接，可访问当前进程有权限操作的任意目录；`.env*`、`.git` 和普通文件类型校验继续保留。在授权节点实现前，这两个 Tool 的跨目录能力不会被 `permission_level` 自动拦截。
+
+System Prompt 已要求模型在路径、内容明确时通过 `read_file` 或 `write_file` 处理用户的文件请求，不得在调用前直接声称无法访问本地文件系统。该规则只触发 ToolCall；后续授权层仍负责放行、确认或拒绝，模型不得使用其他 Tool 绕过拒绝结果。
+
+`exec` 已改为接收并通过 shell 执行完整 `command` 字符串，不再保留命令白名单、危险命令黑名单、项目路径限制或敏感路径限制；管道、重定向、命令组合和状态修改均可执行。它仍标记为 `exec`，但在授权节点实现前不会被自动拦截。
 
 ## 主要问题
 
@@ -32,16 +46,16 @@ src/agent/tools/run_py_tool.ts:13 使用的 python3
 
 我已实际验证：这个模式可以读取项目的 package.json。因此它也能绕过 read_file、write_file 的路径和敏感文件限制，理论上可以读取 .env、访问用户目录、发起网络请求或执行系统命令。
 
-### 2. 写操作没有授权节点
+### 2. 写入和完整命令执行没有授权节点
 
-所有请求都会向模型暴露 write_file，模型生成调用后，ToolNode 会立即执行。src/agent/tools/write_file_tool.ts:74 可以完整覆盖项目内任意普通文件，除了 .env\* 和 .git/。
+所有请求都会向模型暴露 `write_file` 和 `exec`，模型生成调用后，ToolNode 会立即执行。`write_file` 可以覆盖当前进程有权限访问的任意普通文件，除了路径中的 `.env*` 和 `.git`；`exec` 可以执行完整 shell 命令，并且没有同类路径或命令限制。
 
 当前没有：
 
 - 用户确认
 - 只读／写入模式
 - LangGraph interrupt
-- 按工具划分的权限策略
+- 基于 `permission_level` 的执行策略
 
 而且多个 Tool call 会并行执行，同一文件可能出现竞争写入。
 
@@ -78,8 +92,8 @@ src/agent/tools/read_file_tool.ts:48 仍会一次性读取整个文件。但 Too
 已有优点
 
 - Tool 注册集中，参数使用 Zod 校验。
-- exec 使用白名单并禁用 Shell。
-- 文件工具有工作目录、敏感路径和符号链接越界保护。
+- exec 保留 5 秒超时和 64 KB 输出上限。
+- 文件工具保留敏感路径、符号链接真实目标和普通文件类型校验。
 - run_js 使用 Node 权限模型隔离文件、网络和子进程。
 - web_fetch 有协议、重定向、超时和响应大小限制。
 - LangGraph 能正确保持 Tool call 与 Tool result 的消息关系。
@@ -88,9 +102,10 @@ src/agent/tools/read_file_tool.ts:48 仍会一次性读取整个文件。但 Too
 
 1. [x] 统一工具错误协议，修复“失败显示成功”。
 2. [ ] 禁用或真正沙箱化 run_py。
-3. [ ] 在 model_request →
+3. [x] 为全部注册 Tool 增加统一权限分级属性。
+4. [ ] 在 model_request →
    tools 之间增加 authorize_tools 节点，对写入和执行类工具使用 LangGraph
    interrupt。
-4. [ ] 增加 Tool 次数、总输出、耗时和取消控制。
-5. [x] 将超大 Tool 字符串输出持久化，限制进入模型与 checkpointer 的内容。
-6. [ ] 给 read_file 增加分段读取能力，再强化 web_fetch 的网络连接校验。
+5. [ ] 增加 Tool 次数、总输出、耗时和取消控制。
+6. [x] 将超大 Tool 字符串输出持久化，限制进入模型与 checkpointer 的内容。
+7. [ ] 给 read_file 增加分段读取能力，再强化 web_fetch 的网络连接校验。

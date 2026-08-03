@@ -14,6 +14,7 @@ describe('webSearchTool', () => {
 			topic: 'general',
 			includeAnswer: true,
 		})
+		expect(webSearchTool.permission_level).toBe('network')
 	})
 
 	it('passes the query to Tavily and returns its structured result', async () => {

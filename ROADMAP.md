@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力、Context 管理、模型切换、Prompt 模块、用户画像本地读取与全量更新、长期记忆创建、全文索引、检索与按 ID 删除 Tool 已完成；记忆创建和检索已通过 Kimi、DeepSeek 真实回归，Profile 更新与记忆删除流程待真实模型回归。
+终端 Agent 基础能力、Context 管理、模型切换、Prompt 模块、用户画像本地读取与全量更新、长期记忆创建、全文索引、检索与按 ID 删除 Tool、Tool 权限分级元数据、文件 Tool 跨目录访问及 `exec` 完整 shell 命令执行已完成；记忆创建和检索已通过 Kimi、DeepSeek 真实回归，Profile 更新与记忆删除流程待真实模型回归。
 
 ## 已完成
 
@@ -86,6 +86,9 @@
 - 抽离独立 `prompt.ts`，集中构建 System Prompt；`profilePrompt` 从当前目录 `.data/profile.md` 读取用户画像，以 `<profile_info>` 包裹，缺失或空内容使用空标签；模板范围内的当前稳定状态写入 Profile，具备长期价值的带时间经历写为 `event` memory，临时琐事不持久化，并禁止从事件推断未陈述信息。
 - 新增 `profile_update` Tool：模型将新变化与 `<profile_info>` 中仍有效的信息合并为完整 Markdown，Tool 在覆盖 `.data/profile.md` 前保留唯一历史备份，并通过临时文件原子替换主文件。
 - `profile_update` 固定写入当前工作目录，拒绝模型指定路径、空内容、外层标签、目录及符号链接目标；Tool description 不暴露路径和备份实现。
+- 为全部 13 个已注册 Tool 增加 `read`、`write`、`exec`、`network` 或 `db` 权限属性；统一类型和注册表编译期约束可防止后续新增 Tool 时漏配权限，但当前不执行权限拦截。
+- `read_file`、`write_file` 支持绝对路径、`../` 相对路径和跨目录符号链接，可访问当前进程有权限操作的任意目录；继续拒绝 `.env*`、`.git` 和非普通文件。System Prompt 会为明确的文件请求发起对应 ToolCall，并禁止在授权拒绝后改用其他 Tool 绕过，统一权限拦截留待后续实现。
+- `exec` 输入收敛为完整 `command` 字符串并通过 shell 执行，支持原白名单外命令、管道、重定向和状态修改；移除命令及路径限制，保留 5 秒超时、64 KB 输出上限和非零退出错误，统一权限拦截留待后续实现。
 
 ## 进行中
 
@@ -97,6 +100,7 @@
 - 使用真实 Kimi 和 DeepSeek 补充冲突记忆的检索与回答回归。
 - 使用真实 Kimi 和 DeepSeek 验证单一目标、多个候选和不存在目标的长期记忆删除决策。
 - 评估请求前自动召回与非持久化 Context 注入。
+- 基于 `permission_level` 设计并实现 Tool 调用授权、用户确认和拒绝流程。
 
 ## 阻塞
 
@@ -170,3 +174,4 @@
 - 长期记忆删除流程已在 `f02c5fa` 提交，`docs/commits/38-memory-delete-tool.md`、提交目录和历史时间线已同步真实 Commit 信息。
 - Prompt 模块抽离、Profile 文件缺失与空内容回退、非空信息包裹、读取错误边界、Memory 排除规则及系统提示词顺序回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（31 个测试套件、176 条测试）。
 - `profile_update` 全量更新、历史备份、原子替换、路径与符号链接边界、Prompt 规则、统一注册和 Graph 工具循环回归通过；当前状态与带时间事件的分类回归已补齐，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（32 个测试套件、188 条测试）。构建产物已在独立临时目录完成创建、更新和备份验证；本地实际误分类通过备份修正，迁移后的 `event` memory 可由正式检索流程命中。
+- Tool 权限分级、13 个注册实例映射、Memory／Profile 工厂返回值、第三方 Tavily Tool 属性、文件 Tool 跨目录访问、文件请求 Prompt 路由，以及 `exec` 完整命令与 shell 管道回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（33 个测试套件、197 条测试）。Kimi、DeepSeek 均自主调用 `write_file`；构建产物中的注册 `exec` 已成功执行原白名单外的管道命令。

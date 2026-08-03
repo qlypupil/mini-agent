@@ -2,7 +2,7 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { skills } from '../skills'
 import { currentTimeTool } from './current_time_tool'
-import { execTool } from './exec_tool'
+import { execSchema, execTool } from './exec_tool'
 import { loadSkillTool } from './load_skill_tool'
 import { memoryCreate } from './memory_create_tool'
 import { memoryDelete } from './memory_delete_tool'
@@ -11,6 +11,10 @@ import { profileUpdate } from './profile_update_tool'
 import { readFileTool } from './read_file_tool'
 import { runJsTool } from './run_js_tool'
 import { runPyTool } from './run_py_tool'
+import {
+	type PermissionedTool,
+	withPermissionLevel,
+} from './tool_permission'
 import { webFetchTool } from './web_fetch_tool'
 import { webSearchTool } from './web_search_tool'
 import { writeFileTool } from './write_file_tool'
@@ -21,11 +25,11 @@ const readFile = tool(
 		name: 'read_file',
 		// 文件内容会作为工具结果返回给模型，具体安全边界由 readFileTool 强制执行。
 		description:
-			'Read a UTF-8 text file from the current directory or its subdirectories.',
+			'Read a UTF-8 text file from any location accessible to the current process.',
 		schema: z.object({
 			path: z
 				.string()
-				.describe('A relative path to a file in the current directory.'),
+				.describe('An absolute file path or a path relative to the current directory.'),
 		}),
 	},
 )
@@ -37,11 +41,11 @@ const writeFile = tool(
 		name: 'write_file',
 		// 内容由模型生成，路径与敏感文件限制必须由 writeFileTool 强制执行。
 		description:
-			'Create a new UTF-8 file or overwrite an existing file in the current directory or its subdirectories.',
+			'Create a new UTF-8 file or overwrite an existing file at any location accessible to the current process.',
 		schema: z.object({
 			path: z
 				.string()
-				.describe('A relative path to a file in the current directory.'),
+				.describe('An absolute file path or a path relative to the current directory.'),
 			content: z.string().describe('The complete UTF-8 text content to write.'),
 		}),
 	},
@@ -51,26 +55,9 @@ const exec = tool(
 	(input) => execTool(input),
 	{
 		name: 'exec',
-		// schema 只暴露结构化的只读操作，execTool 仍会在运行时二次校验。
 		description:
-			'Run a safe read-only command in the current directory. Shell syntax and write operations are not supported.',
-		schema: z.object({
-			command: z
-				.enum(['ls', 'find', 'rg', 'pwd', 'git_status', 'git_diff', 'git_log'])
-				.describe('The safe read-only command to run.'),
-			path: z
-				.string()
-				.optional()
-				.describe('Optional relative path for ls, find, or rg.'),
-			query: z.string().optional().describe('Required search text when command is rg.'),
-			maxDepth: z
-				.number()
-				.int()
-				.min(0)
-				.max(5)
-				.optional()
-				.describe('Optional maximum depth when command is find.'),
-		}),
+			'Run a complete shell command in the current working directory and return its standard output. Shell syntax, pipelines, redirects, and commands that modify files or system state are supported.',
+		schema: execSchema,
 	},
 )
 
@@ -126,34 +113,37 @@ const webFetch = tool(
 const skillNames = skills.map((skill) => skill.name)
 const skillTools = skillNames.length
 	? [
-			tool(
-				({ name }: { name: string }) => loadSkillTool(name),
-				{
-					name: 'load_skill',
-					description: 'Load the complete SKILL.md instructions for one available skill.',
-					schema: z.object({
-						name: z
-							.enum(skillNames as [string, ...string[]])
-							.describe('The exact name of the skill to load.'),
-					}),
-				},
+			withPermissionLevel(
+				tool(
+					({ name }: { name: string }) => loadSkillTool(name),
+					{
+						name: 'load_skill',
+						description: 'Load the complete SKILL.md instructions for one available skill.',
+						schema: z.object({
+							name: z
+								.enum(skillNames as [string, ...string[]])
+								.describe('The exact name of the skill to load.'),
+						}),
+					},
+				),
+				'read',
 			),
 		]
 	: []
 
 // Agent 统一从此注册表加载工具；新增工具时在这里声明元信息并加入数组。
 export const tools = [
-	readFile,
-	writeFile,
-	exec,
-	runJs,
-	runPy,
-	currentTime,
+	withPermissionLevel(readFile, 'read'),
+	withPermissionLevel(writeFile, 'write'),
+	withPermissionLevel(exec, 'exec'),
+	withPermissionLevel(runJs, 'exec'),
+	withPermissionLevel(runPy, 'exec'),
+	withPermissionLevel(currentTime, 'read'),
 	webSearchTool,
-	webFetch,
+	withPermissionLevel(webFetch, 'network'),
 	profileUpdate,
 	memoryCreate,
 	memoryRetrieve,
 	memoryDelete,
 	...skillTools,
-]
+] satisfies PermissionedTool[]

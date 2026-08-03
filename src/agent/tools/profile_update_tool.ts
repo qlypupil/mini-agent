@@ -12,6 +12,7 @@ import {
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
+import { withPermissionLevel } from './tool_permission'
 
 export const PROFILE_PATH = resolve(process.cwd(), '.data/profile.md')
 
@@ -125,12 +126,15 @@ export async function profileUpdateTool(
 }
 
 export function createProfileUpdateTool(profileFilePath = PROFILE_PATH) {
-	return tool((input) => profileUpdateTool(input, profileFilePath), {
-		name: 'profile_update',
-		description:
-			"Update the user's current, stable profile attributes covered by <profile_template>. Do not use this tool for dated or time-bound past events. Always submit the complete updated profile, preserving every still-valid detail from <profile_info>, not only the changed field.",
-		schema: profileUpdateSchema,
-	})
+	return withPermissionLevel(
+		tool((input) => profileUpdateTool(input, profileFilePath), {
+			name: 'profile_update',
+			description:
+				"Update the user's current, stable profile attributes covered by <profile_template>. Do not use this tool for dated or time-bound past events. Always submit the complete updated profile, preserving every still-valid detail from <profile_info>, not only the changed field.",
+			schema: profileUpdateSchema,
+		}),
+		'write',
+	)
 }
 
 export const profileUpdate = createProfileUpdateTool()

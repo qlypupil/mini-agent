@@ -2,6 +2,7 @@ import { tool, type ToolRunnableConfig } from '@langchain/core/tools'
 import { z } from 'zod'
 import { DB_PATH } from '../storage/db'
 import { createMemory } from '../storage/memory'
+import { withPermissionLevel } from './tool_permission'
 
 export const memoryCreateSchema = z.object({
 	type: z.enum(['fact', 'event', 'preference', 'skill']),
@@ -41,15 +42,18 @@ export function memoryCreateTool(
 }
 
 export function createMemoryCreateTool(databasePath = DB_PATH) {
-	return tool(
-		(input, config) =>
-			memoryCreateTool(input, getSessionId(config), databasePath),
-		{
-			name: 'memory_create',
-			description:
-				'Create one durable long-term memory about the user. Use only for stable facts, important events, preferences, or skills with future value. Never store secrets or temporary task details.',
-			schema: memoryCreateSchema,
-		},
+	return withPermissionLevel(
+		tool(
+			(input, config) =>
+				memoryCreateTool(input, getSessionId(config), databasePath),
+			{
+				name: 'memory_create',
+				description:
+					'Create one durable long-term memory about the user. Use only for stable facts, important events, preferences, or skills with future value. Never store secrets or temporary task details.',
+				schema: memoryCreateSchema,
+			},
+		),
+		'db',
 	)
 }
 

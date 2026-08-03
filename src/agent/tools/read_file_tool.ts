@@ -1,23 +1,8 @@
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { resolve, sep } from 'node:path'
 
-function assertInsideRoot(root: string, target: string): string {
-	const relativePath = relative(root, target)
-
-	// relative() 结果以 .. 开头或仍是绝对路径，说明请求已越出当前工作目录。
-	if (
-		relativePath === '..' ||
-		relativePath.startsWith(`..${sep}`) ||
-		isAbsolute(relativePath)
-	) {
-		throw new Error('Only files in the current directory can be read.')
-	}
-
-	return relativePath
-}
-
-function assertSafePath(relativePath: string): void {
-	const segments = relativePath.split(sep)
+function assertSafePath(filePath: string): void {
+	const segments = resolve(filePath).split(sep)
 
 	// 工具结果会发送给模型，禁止读取环境变量和 Git 元数据以避免泄露密钥与历史信息。
 	if (segments.some((segment) => segment === '.git' || segment.startsWith('.env'))) {
@@ -26,19 +11,13 @@ function assertSafePath(relativePath: string): void {
 }
 
 export async function readFileTool(filePath: string): Promise<string> {
-	// 接口只接受相对路径，避免调用方用绝对路径绕过当前目录边界。
-	if (isAbsolute(filePath)) {
-		throw new Error('Only relative file paths are allowed.')
-	}
+	// 相对路径以当前目录为基准；绝对路径和当前目录外的目标均允许访问。
+	const requestedPath = resolve(filePath)
+	assertSafePath(requestedPath)
 
-	// 使用规范化后的根目录，使后续检查不受工作目录自身符号链接影响。
-	const root = await realpath(process.cwd())
-	const requestedPath = resolve(root, filePath)
-	assertSafePath(assertInsideRoot(root, requestedPath))
-
-	// Resolve symbolic links before the final boundary check to prevent path escapes.
+	// 解析符号链接后再次检查，避免安全名称的链接指向敏感文件。
 	const resolvedPath = await realpath(requestedPath)
-	assertSafePath(assertInsideRoot(root, resolvedPath))
+	assertSafePath(resolvedPath)
 
 	if (!(await stat(resolvedPath)).isFile()) {
 		throw new Error('The requested path is not a file.')

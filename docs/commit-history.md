@@ -1013,6 +1013,22 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 30 个测试套件、172 条测试；构建产物使用临时数据库确认 `memory_delete` 已注册，并在删除后得到 `memory=0`、`memory_fts=0`。真实 Kimi、DeepSeek 删除决策回归保留为待办。
 
+## 39. [`0e52385` `feat: 添加用户画像读写与记忆分类规则`](https://github.com/qlypupil/mini-agent/commit/0e523851fd7102ea73389e20b3d4175c6ef5db20)
+
+**详细说明**：[39 用户画像 Profile](./commits/39-profile-prompt.md)
+
+**目标**：将当前稳定的用户画像与带时间的长期事件分开存储，并提供可恢复的 Profile 全量更新能力。
+
+**主要改动**：
+
+- 抽离 `prompt.ts`，集中构建 System Prompt，并从当前目录 `.data/profile.md` 读取用户画像后使用 `<profile_info>` 包裹。
+- 增加固定范围的 `<profile_template>`，区分当前稳定状态、具备长期价值的带时间事件和无需持久化的临时信息。
+- 新增 `profile_update` Tool，要求模型提交包含全部仍有效信息的完整 Markdown，并禁止模型指定存储路径。
+- 覆盖已有 Profile 前创建唯一历史备份，通过同目录临时文件和 `rename` 原子替换主文件。
+- 明确禁止从教育或工作事件推断年龄、毕业年份、学历和从业年限等未陈述信息。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过，共 32 个测试套件、188 条测试；构建产物在独立临时目录完成 Profile 创建、更新和备份验证。
+
 ## 当前结构
 
 ```text
