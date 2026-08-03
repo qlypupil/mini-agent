@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力、Context 管理、模型切换与长期记忆创建流程已完成，下一阶段进入长期记忆检索设计。
+终端 Agent 基础能力、Context 管理、模型切换、长期记忆创建流程与全文检索索引已完成，下一阶段实现长期记忆检索与请求前召回。
 
 ## 已完成
 
@@ -79,6 +79,7 @@
 - 新增 `docs/commits/35-memory-create-tool.md`，明确长期记忆创建 Tool 的职责拆分、运行时会话注入、存储规则、模型决策边界、测试与验收标准。
 - 新增 `memory_create` Tool：模型可创建 `fact`、`event`、`preference`、`skill` 四类长期记忆，`session_id` 仅从 LangGraph 运行时注入，结果写入独立 SQLite 数据库。
 - 新增长期记忆写入存储层、模型决策规则及临时数据库测试，不修改或裁剪现有 checkpointer 历史。
+- 新增关联 `memory` 主表的 FTS5 外部内容表 `memory_fts`，通过触发器同步新记忆的新增、更新和删除，为后续 `memory_search` 提供全文索引。
 
 ## 进行中
 
@@ -151,3 +152,4 @@
 - 长期记忆创建流程已在 `4772571` 提交；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（28 个测试套件、147 条测试），覆盖参数化写入、默认值、Schema 边界、运行时 `thread_id` 注入、精简结果及 Graph/checkpointer 历史保持。
 - `docs/commits/35-memory-create-tool.md` 已补齐与前 34 篇一致的 Commit 信息区块，并链接到完整的 `4772571` 实现提交。
 - `docs/commits/` 文件名与引用一致性检查通过：35 篇编号文档均存在，01～34 文件名不再包含短 Commit Hash，两个索引页的相对链接全部有效；`git diff --check` 通过。
+- `memory_fts` 初始化与增删改同步回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（28 个测试套件、148 条测试），实际 `.data/memory.db` 已确认创建全文检索表及三个同步触发器。

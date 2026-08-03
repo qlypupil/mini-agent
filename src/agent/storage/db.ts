@@ -16,6 +16,43 @@ CREATE TABLE IF NOT EXISTS memory (
 	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+	content,
+	keywords,
+	content='memory',
+	content_rowid='id'
+);
+
+CREATE TRIGGER IF NOT EXISTS memory_fts_after_insert
+AFTER INSERT ON memory
+FOR EACH ROW
+BEGIN
+	INSERT INTO memory_fts(rowid, content, keywords)
+	VALUES (NEW.id, NEW.content, NEW.keywords);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memory_fts_after_delete
+AFTER DELETE ON memory
+FOR EACH ROW
+BEGIN
+	INSERT INTO memory_fts(memory_fts, rowid, content, keywords)
+	VALUES ('delete', OLD.id, OLD.content, OLD.keywords);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memory_fts_after_update
+AFTER UPDATE OF id, content, keywords ON memory
+FOR EACH ROW
+WHEN
+	OLD.id IS NOT NEW.id OR
+	OLD.content IS NOT NEW.content OR
+	OLD.keywords IS NOT NEW.keywords
+BEGIN
+	INSERT INTO memory_fts(memory_fts, rowid, content, keywords)
+	VALUES ('delete', OLD.id, OLD.content, OLD.keywords);
+	INSERT INTO memory_fts(rowid, content, keywords)
+	VALUES (NEW.id, NEW.content, NEW.keywords);
+END;
+
 CREATE TRIGGER IF NOT EXISTS memory_update_updated_at
 AFTER UPDATE OF type, content, keywords, importance, session_id ON memory
 FOR EACH ROW

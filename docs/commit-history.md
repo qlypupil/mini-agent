@@ -965,6 +965,22 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 28 个测试套件、147 条测试。
 
+## 36. 待提交 `feat: 添加长期记忆全文索引`
+
+**详细说明**：[36 长期记忆全文索引](./commits/36-memory-full-text-index.md)
+
+**目标**：为后续 `memory_search` 建立与 `memory` 主表同步的 FTS5 全文索引，不改变现有记忆创建和 checkpointer 流程。
+
+**主要改动**：
+
+- 在长期记忆 Schema 中新增 external-content 虚拟表 `memory_fts`，索引 `content` 和 `keywords`，并通过 `memory.id` 关联主表记录。
+- 新增 insert、update、delete 三个 SQLite 触发器，使新记忆的完整生命周期自动同步到全文索引。
+- 开发阶段按全新数据处理，一次性清空本地旧记忆并重置自增序列；启动代码不包含清表、旧数据回填或迁移逻辑。
+- 增加幂等初始化和索引同步回归测试，覆盖旧词项移除、新词项写入与主表删除。
+- 记录默认 `unicode61` tokenizer 对连续中文分词能力有限，具体分词和查询转义留待 `memory_search` 阶段解决。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 28 个测试套件、148 条测试；实际 `.data/memory.db` 已创建 `memory_fts` 和三个同步触发器。
+
 ## 当前结构
 
 ```text
@@ -987,7 +1003,7 @@ src/agent/
   storage/
     checkpointer.ts           # SQLite checkpointer 工厂
     context_compression.ts    # 自动压缩状态的独立文件缓存
-    db.ts                     # 长期记忆数据库 Schema 初始化
+    db.ts                     # 长期记忆主表、FTS5 索引与同步触发器初始化
     memory.ts                 # 长期记忆参数化写入
     sessions.ts               # SQLite 会话查询与终端表格
   skills/                     # Skills 注册、提示词与内置资源
@@ -1006,7 +1022,7 @@ tsconfig.build.json          # 仅编译运行时源码的构建配置
 - 自动 Context 压缩状态保存在 `.data/context-compression/`，不会覆盖 SQLite 原历史；压缩依赖独立模型请求，外部模型过载时可能失败并在下一轮重试。
 - 模型请求最多投影 300 条聊天历史，额外的 SystemMessage 不计入该上限；按数量裁剪不能替代按 token 占比触发的自动摘要。
 - 超过 50,000 字符的 Tool 输出保存在 `tool_output/`；模型只接收文件路径与前 2000 字预览。更早的历史 ToolMessage 会在模型请求前临时简化，但 SQLite 中仍保留原始消息。
-- `memory_create` 目前只负责写入长期记忆；尚未实现记忆检索、请求前召回、更新和删除。
+- `memory_create` 目前只负责写入长期记忆；`memory_fts` 会同步新数据，但尚未实现记忆检索、请求前召回、更新和删除。
 - `web_search` 依赖 `TAVILY_API_KEY` 和外部 Tavily 服务；没有可用密钥时无法获取网页实时信息。
 - `current_time` 使用运行 CLI 的本机时区；用户询问其他地区的当前时间时，需要后续增加时区参数。
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。

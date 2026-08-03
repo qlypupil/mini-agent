@@ -23,7 +23,7 @@ function createDatabasePath(): string {
 }
 
 describe('initializeDatabase', () => {
-	it('creates the memory table idempotently', () => {
+	it('creates the memory tables and FTS triggers idempotently', () => {
 		const databasePath = createDatabasePath()
 
 		initializeDatabase(databasePath)
@@ -31,13 +31,71 @@ describe('initializeDatabase', () => {
 
 		const database = new Database(databasePath, { readonly: true })
 		try {
-			const table = database
+			const tables = database
 				.prepare(
-					"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory'",
+					"SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('memory', 'memory_fts') ORDER BY name",
 				)
-				.get()
+				.all()
+			const triggers = database
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'memory_fts_%' ORDER BY name",
+				)
+				.all()
 
-			expect(table).toEqual({ name: 'memory' })
+			expect(tables).toEqual([
+				{ name: 'memory' },
+				{ name: 'memory_fts' },
+			])
+			expect(triggers).toEqual([
+				{ name: 'memory_fts_after_delete' },
+				{ name: 'memory_fts_after_insert' },
+				{ name: 'memory_fts_after_update' },
+			])
+		} finally {
+			database.close()
+		}
+	})
+
+	it('keeps the FTS index synchronized with new memory changes', () => {
+		const databasePath = createDatabasePath()
+		initializeDatabase(databasePath)
+
+		const database = new Database(databasePath)
+		const search = (query: string) =>
+			database
+				.prepare(
+					'SELECT rowid AS id FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rowid',
+				)
+				.all(query)
+
+		try {
+			const result = database
+				.prepare(
+					"INSERT INTO memory (type, content, keywords) VALUES ('preference', ?, ?)",
+				)
+				.run(
+					'User prefers TypeScript for agent projects.',
+					JSON.stringify(['TypeScript', 'agent development']),
+				)
+			const id = Number(result.lastInsertRowid)
+
+			expect(search('TypeScript')).toEqual([{ id }])
+			expect(search('development')).toEqual([{ id }])
+
+			database
+				.prepare('UPDATE memory SET content = ?, keywords = ? WHERE id = ?')
+				.run(
+					'User prefers Rust for systems projects.',
+					JSON.stringify(['Rust', 'systems development']),
+					id,
+				)
+
+			expect(search('TypeScript')).toEqual([])
+			expect(search('Rust')).toEqual([{ id }])
+
+			database.prepare('DELETE FROM memory WHERE id = ?').run(id)
+
+			expect(search('Rust')).toEqual([])
 		} finally {
 			database.close()
 		}
