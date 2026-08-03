@@ -69,6 +69,20 @@ export function createMemory(
 	}
 }
 
+export function deleteMemory(id: number, databasePath = DB_PATH): boolean {
+	const database = new Database(databasePath)
+
+	try {
+		const result = database
+			.prepare('DELETE FROM memory WHERE id = ?')
+			.run(id)
+
+		return result.changes === 1
+	} finally {
+		database.close()
+	}
+}
+
 export function retrieveMemories(
 	keywords: string[],
 	databasePath = DB_PATH,

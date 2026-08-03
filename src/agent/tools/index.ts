@@ -5,6 +5,7 @@ import { currentTimeTool } from './current_time_tool'
 import { execTool } from './exec_tool'
 import { loadSkillTool } from './load_skill_tool'
 import { memoryCreate } from './memory_create_tool'
+import { memoryDelete } from './memory_delete_tool'
 import { memoryRetrieve } from './memory_retrieve_tool'
 import { readFileTool } from './read_file_tool'
 import { runJsTool } from './run_js_tool'
@@ -151,5 +152,6 @@ export const tools = [
 	webFetch,
 	memoryCreate,
 	memoryRetrieve,
+	memoryDelete,
 	...skillTools,
 ]

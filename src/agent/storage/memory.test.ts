@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
 import { initializeDatabase } from './db'
-import { createMemory, retrieveMemories } from './memory'
+import { createMemory, deleteMemory, retrieveMemories } from './memory'
 
 interface MemoryRow {
 	id: number
@@ -99,6 +99,81 @@ describe('createMemory', () => {
 				databasePath,
 			),
 		).toThrow('no such table: memory')
+	})
+})
+
+describe('deleteMemory', () => {
+	it('deletes the memory row and its FTS index entry', () => {
+		const databasePath = createDatabasePath()
+		initializeDatabase(databasePath)
+		const deletedId = createMemory(
+			{
+				type: 'preference',
+				content: 'User prefers mangoes.',
+				keywords: ['fruit preference', 'mango'],
+				sessionId: 'session-1',
+			},
+			databasePath,
+		)
+		const retainedId = createMemory(
+			{
+				type: 'preference',
+				content: 'User prefers concise answers.',
+				keywords: ['response style', 'concise'],
+				sessionId: 'session-2',
+			},
+			databasePath,
+		)
+
+		expect(deleteMemory(deletedId, databasePath)).toBe(true)
+
+		const database = new Database(databasePath, { readonly: true })
+		try {
+			expect(
+				database.prepare('SELECT id FROM memory ORDER BY id').all(),
+			).toEqual([{ id: retainedId }])
+			expect(
+				database
+					.prepare(
+						'SELECT rowid AS id FROM memory_fts WHERE memory_fts MATCH ?',
+					)
+					.all('mango'),
+			).toEqual([])
+			expect(
+				database
+					.prepare(
+						'SELECT rowid AS id FROM memory_fts WHERE memory_fts MATCH ?',
+					)
+					.all('concise'),
+			).toEqual([{ id: retainedId }])
+		} finally {
+			database.close()
+		}
+	})
+
+	it('returns false without changing storage when the ID does not exist', () => {
+		const databasePath = createDatabasePath()
+		initializeDatabase(databasePath)
+		const id = createMemory(
+			{
+				type: 'fact',
+				content: 'User writes about AI products.',
+				keywords: ['AI writing'],
+				sessionId: 'session-1',
+			},
+			databasePath,
+		)
+
+		expect(deleteMemory(id + 100, databasePath)).toBe(false)
+		expect(retrieveMemories(['AI writing'], databasePath)).toMatchObject([
+			{ id },
+		])
+	})
+
+	it('throws when the memory table is unavailable', () => {
+		expect(() => deleteMemory(1, createDatabasePath())).toThrow(
+			'no such table: memory',
+		)
 	})
 })
 

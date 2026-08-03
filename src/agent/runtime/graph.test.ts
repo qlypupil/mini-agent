@@ -16,6 +16,7 @@ import { createCheckpointer } from '../storage/checkpointer'
 import { initializeDatabase } from '../storage/db'
 import { createMemory } from '../storage/memory'
 import { createMemoryCreateTool } from '../tools/memory_create_tool'
+import { createMemoryDeleteTool } from '../tools/memory_delete_tool'
 import { createMemoryRetrieveTool } from '../tools/memory_retrieve_tool'
 import Database from 'better-sqlite3'
 
@@ -468,6 +469,96 @@ describe('custom chat graph', () => {
 					)
 					.get('"回答偏好"'),
 			).toEqual({ count: 1 })
+		} finally {
+			database.close()
+		}
+
+		const snapshot = await graph.getState(config)
+		expect(snapshot.values.messages[0]).toMatchObject({
+			id: 'existing-message',
+			content: '已有历史',
+		})
+		checkpointer.db.close()
+	})
+
+	it('retrieves an exact memory ID before deleting it without rewriting history', async () => {
+		const memoryDatabasePath = join(
+			mkdtempSync(join(tmpdir(), 'termclaw-graph-memory-delete-')),
+			'memory.db',
+		)
+		initializeDatabase(memoryDatabasePath)
+		const memoryId = createMemory(
+			{
+				type: 'preference',
+				content: '用户偏好芒果。',
+				keywords: ['水果偏好', '芒果'],
+				sessionId: 'source-thread',
+			},
+			memoryDatabasePath,
+		)
+		const memoryRetrieve = createMemoryRetrieveTool(memoryDatabasePath)
+		const memoryDelete = createMemoryDeleteTool(memoryDatabasePath)
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'memory-retrieve-call-1',
+					name: 'memory_retrieve',
+					args: { keywords: ['水果偏好', '芒果'] },
+				},
+			])
+			.respondWithTools([
+				{
+					id: 'memory-delete-call-1',
+					name: 'memory_delete',
+					args: { id: memoryId },
+				},
+			])
+			.respond(new AIMessage('已删除这条记忆。'))
+		const { graph, checkpointer } = createTestGraph(model, [
+			memoryRetrieve,
+			memoryDelete,
+		])
+		const config = { configurable: { thread_id: 'delete-graph-thread' } }
+		await graph.updateState(config, {
+			messages: [new HumanMessage({ id: 'existing-message', content: '已有历史' })],
+		})
+
+		await graph.invoke(
+			{ messages: [new HumanMessage('忘记我的水果偏好')] },
+			{
+				...config,
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(model.callCount).toBe(3)
+		const deleteToolMessage = model.calls[2].messages.find(
+			(message) =>
+				message.getType() === 'tool' &&
+				(message as ToolMessage).name === 'memory_delete',
+		)
+		expect(deleteToolMessage).toMatchObject({
+			name: 'memory_delete',
+			tool_call_id: 'memory-delete-call-1',
+			content: `{"status":"deleted","id":${memoryId}}`,
+		})
+
+		const database = new Database(memoryDatabasePath, { readonly: true })
+		try {
+			expect(database.prepare('SELECT COUNT(*) AS count FROM memory').get()).toEqual({
+				count: 0,
+			})
+			expect(
+				database
+					.prepare(
+						'SELECT COUNT(*) AS count FROM memory_fts WHERE memory_fts MATCH ?',
+					)
+					.get('芒果'),
+			).toEqual({ count: 0 })
 		} finally {
 			database.close()
 		}

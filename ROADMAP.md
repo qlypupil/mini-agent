@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力、Context 管理、模型切换、长期记忆创建、全文索引与 `memory_retrieve` Tool 已完成并通过 Kimi、DeepSeek 真实回归，下一阶段评估请求前自动召回。
+终端 Agent 基础能力、Context 管理、模型切换、长期记忆创建、全文索引、检索与按 ID 删除 Tool 已完成；创建和检索已通过 Kimi、DeepSeek 真实回归，删除流程待真实模型回归。
 
 ## 已完成
 
@@ -82,6 +82,7 @@
 - 新增关联 `memory` 主表的 FTS5 外部内容表 `memory_fts`，通过触发器同步新记忆的新增、更新和删除，为后续 `memory_retrieve` 提供全文索引。
 - 新增 `docs/commits/37-memory-retrieve-tool.md`，明确模型调用边界、多关键词 FTS5 查询、相关性排序、只读返回协议、安全约束、测试方案与后续自动召回边界。
 - 新增 `memory_retrieve` Tool：当前 Context 无答案且用户询问已保存的个人记忆时，模型可整理关键词并通过只读 FTS5 查询检索最多 5 条长期记忆。
+- 新增 `memory_delete` Tool：用户明确要求删除或遗忘长期记忆时，模型先通过检索确定唯一 ID，再删除主表记录并由 SQLite 触发器同步清理 FTS5 索引。
 
 ## 进行中
 
@@ -90,6 +91,7 @@
 ## 待办
 
 - 使用真实 Kimi 和 DeepSeek 补充冲突记忆的检索与回答回归。
+- 使用真实 Kimi 和 DeepSeek 验证单一目标、多个候选和不存在目标的长期记忆删除决策。
 - 评估请求前自动召回与非持久化 Context 注入。
 
 ## 阻塞
@@ -160,3 +162,4 @@
 - `memory_retrieve` 存储层、Tool Schema 与 Graph 工具循环回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（29 个测试套件、161 条测试），构建产物已通过临时数据库验证注册与检索结果。
 - `memory_retrieve` 真实模型回归通过：Kimi 正确处理命中、Context 复用和无结果；DeepSeek 首轮无结果场景未调用 Tool，收紧“宣称无记忆前必须检索”规则后复测通过。验证使用独立临时数据库，未污染项目长期记忆。
 - 长期记忆检索流程已在 `b4482e2` 提交，`docs/commits/37-memory-retrieve-tool.md`、提交目录和历史时间线已同步真实 Commit 信息。
+- `memory_delete` 存储层、Tool Schema 与“先检索再删除”Graph 工具循环回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（30 个测试套件、172 条测试）。构建产物已通过临时数据库验证 Tool 注册、主表删除和 FTS5 索引同步清理，真实 Kimi、DeepSeek 删除决策回归待办。
