@@ -14,7 +14,9 @@ import { createChatGraph } from './graph'
 import * as toolOutput from './tool_output'
 import { createCheckpointer } from '../storage/checkpointer'
 import { initializeDatabase } from '../storage/db'
+import { createMemory } from '../storage/memory'
 import { createMemoryCreateTool } from '../tools/memory_create_tool'
+import { createMemoryRetrieveTool } from '../tools/memory_retrieve_tool'
 import Database from 'better-sqlite3'
 
 function createTestGraph(model = fakeModel(), testTools: Parameters<typeof createChatGraph>[0]['tools'] = []) {
@@ -387,6 +389,89 @@ describe('custom chat graph', () => {
 			tool_call_id: 'memory-call-1',
 			content: '{"status":"created","id":1}',
 		})
+		const snapshot = await graph.getState(config)
+		expect(snapshot.values.messages[0]).toMatchObject({
+			id: 'existing-message',
+			content: '已有历史',
+		})
+		checkpointer.db.close()
+	})
+
+	it('retrieves long-term memory without modifying storage or rewriting history', async () => {
+		const memoryDatabasePath = join(
+			mkdtempSync(join(tmpdir(), 'termclaw-graph-memory-retrieve-')),
+			'memory.db',
+		)
+		initializeDatabase(memoryDatabasePath)
+		const memoryId = createMemory(
+			{
+				type: 'preference',
+				content: '用户偏好简洁回答。',
+				keywords: ['回答偏好', '简洁'],
+				importance: 4,
+				sessionId: 'source-thread',
+			},
+			memoryDatabasePath,
+		)
+		const memoryRetrieve = createMemoryRetrieveTool(memoryDatabasePath)
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'memory-retrieve-call-1',
+					name: 'memory_retrieve',
+					args: { keywords: ['回答偏好', '简洁'] },
+				},
+			])
+			.respond(new AIMessage('你偏好简洁回答。'))
+		const { graph, checkpointer } = createTestGraph(model, [memoryRetrieve])
+		const config = { configurable: { thread_id: 'retrieve-graph-thread' } }
+		await graph.updateState(config, {
+			messages: [new HumanMessage({ id: 'existing-message', content: '已有历史' })],
+		})
+
+		await graph.invoke(
+			{ messages: [new HumanMessage('你记得我的回答偏好吗？')] },
+			{
+				...config,
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		const toolMessage = model.calls[1].messages.find(
+			(message) => message.getType() === 'tool',
+		)
+		expect(toolMessage).toMatchObject({
+			name: 'memory_retrieve',
+			tool_call_id: 'memory-retrieve-call-1',
+			content: expect.stringContaining('用户偏好简洁回答。'),
+		})
+		if (typeof toolMessage?.content === 'string') {
+			expect(JSON.parse(toolMessage.content)).toMatchObject({
+				status: 'found',
+				memories: [{ id: memoryId }],
+			})
+		}
+
+		const database = new Database(memoryDatabasePath, { readonly: true })
+		try {
+			expect(database.prepare('SELECT COUNT(*) AS count FROM memory').get()).toEqual({
+				count: 1,
+			})
+			expect(
+				database
+					.prepare(
+						'SELECT COUNT(*) AS count FROM memory_fts WHERE memory_fts MATCH ?',
+					)
+					.get('"回答偏好"'),
+			).toEqual({ count: 1 })
+		} finally {
+			database.close()
+		}
+
 		const snapshot = await graph.getState(config)
 		expect(snapshot.values.messages[0]).toMatchObject({
 			id: 'existing-message',

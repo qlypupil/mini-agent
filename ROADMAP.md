@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力、Context 管理、模型切换、长期记忆创建流程与全文检索索引已完成，下一阶段实现长期记忆检索与请求前召回。
+终端 Agent 基础能力、Context 管理、模型切换、长期记忆创建、全文索引与 `memory_retrieve` Tool 已完成并通过 Kimi、DeepSeek 真实回归，下一阶段评估请求前自动召回。
 
 ## 已完成
 
@@ -79,7 +79,9 @@
 - 新增 `docs/commits/35-memory-create-tool.md`，明确长期记忆创建 Tool 的职责拆分、运行时会话注入、存储规则、模型决策边界、测试与验收标准。
 - 新增 `memory_create` Tool：模型可创建 `fact`、`event`、`preference`、`skill` 四类长期记忆，`session_id` 仅从 LangGraph 运行时注入，结果写入独立 SQLite 数据库。
 - 新增长期记忆写入存储层、模型决策规则及临时数据库测试，不修改或裁剪现有 checkpointer 历史。
-- 新增关联 `memory` 主表的 FTS5 外部内容表 `memory_fts`，通过触发器同步新记忆的新增、更新和删除，为后续 `memory_search` 提供全文索引。
+- 新增关联 `memory` 主表的 FTS5 外部内容表 `memory_fts`，通过触发器同步新记忆的新增、更新和删除，为后续 `memory_retrieve` 提供全文索引。
+- 新增 `docs/commits/37-memory-retrieve-tool.md`，明确模型调用边界、多关键词 FTS5 查询、相关性排序、只读返回协议、安全约束、测试方案与后续自动召回边界。
+- 新增 `memory_retrieve` Tool：当前 Context 无答案且用户询问已保存的个人记忆时，模型可整理关键词并通过只读 FTS5 查询检索最多 5 条长期记忆。
 
 ## 进行中
 
@@ -87,7 +89,8 @@
 
 ## 待办
 
-- 设计 `memory_search` 及请求前召回流程；当前创建的长期记忆尚不会自动注入模型 Context。
+- 使用真实 Kimi 和 DeepSeek 补充冲突记忆的检索与回答回归。
+- 评估请求前自动召回与非持久化 Context 注入。
 
 ## 阻塞
 
@@ -153,3 +156,6 @@
 - `docs/commits/35-memory-create-tool.md` 已补齐与前 34 篇一致的 Commit 信息区块，并链接到完整的 `4772571` 实现提交。
 - `docs/commits/` 文件名与引用一致性检查通过：35 篇编号文档均存在，01～34 文件名不再包含短 Commit Hash，两个索引页的相对链接全部有效；`git diff --check` 通过。
 - `memory_fts` 初始化与增删改同步回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（28 个测试套件、148 条测试），实际 `.data/memory.db` 已确认创建全文检索表及三个同步触发器。
+- `memory_retrieve` Tool 设计已完成本机 FTS5 查询验证；`docs/commits/` 共 37 篇编号文档连续，40 个 Markdown 文件的相对链接检查与 `git diff --check` 通过，本次未修改运行时代码。
+- `memory_retrieve` 存储层、Tool Schema 与 Graph 工具循环回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（29 个测试套件、161 条测试），构建产物已通过临时数据库验证注册与检索结果。
+- `memory_retrieve` 真实模型回归通过：Kimi 正确处理命中、Context 复用和无结果；DeepSeek 首轮无结果场景未调用 Tool，收紧“宣称无记忆前必须检索”规则后复测通过。验证使用独立临时数据库，未污染项目长期记忆。
