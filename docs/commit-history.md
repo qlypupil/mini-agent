@@ -1045,6 +1045,38 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 33 个测试套件、197 条测试；Kimi、DeepSeek 均自主调用 `write_file` 写入工作目录外的临时文件，构建产物中的注册 `exec` 成功执行原白名单外的管道命令。
 
+## 41. [`a51ff60` `feat: 增加 Tool 调用确认机制`](https://github.com/qlypupil/mini-agent/commit/a51ff6061aaf2a902b180c60c6a5ce93550d6db0)
+
+**详细说明**：[41 Tool 调用 Human-in-the-loop 确认](./commits/41-tool-human-in-the-loop.md)
+
+**目标**：在模型提出 ToolCall 后、实际执行前统一暂停 Graph，由用户逐项批准或拒绝，避免模型自行触发文件、命令、网络和数据库操作。
+
+**主要改动**：
+
+- 在自定义 StateGraph 中新增 `authorize_tools` 节点，使用 LangGraph `interrupt()` 暂停，并通过同一 `thread_id` 的 `Command({ resume })` 恢复。
+- 确认请求中的 Tool 名称、完整参数和权限等级来自服务端注册表，不能由模型伪造或替换。
+- 同一轮多个 ToolCall 按原顺序逐项确认，只执行获批调用；拒绝调用生成配对的错误 `ToolMessage`，禁止重试或换 Tool 绕过。
+- CLI 支持 `y`／`yes` 批准，`n`／`no`／空输入拒绝，其他输入提示后重试；未提供确认回调时全部默认拒绝。
+- Agent 使用 `messages` 与 `updates` 双流捕获模型输出和中断，在多次恢复过程中只提交一次用户消息。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过，共 34 个测试套件、210 条测试；覆盖确认前零执行、可信权限载荷、批准、拒绝、混合决定、默认拒绝和 CLI 输入解析。
+
+## 42. [`ae2e00e` `feat: 添加跨平台危险路径判断`](https://github.com/qlypupil/mini-agent/commit/ae2e00e24dace6dff402be3164ae0af58826e825)
+
+**详细说明**：[42 跨平台危险路径基线与匹配器](./commits/42-dangerous-path-matcher.md)
+
+**目标**：为后续文件权限决策建立可维护的跨平台危险读取路径数据和统一判断函数，防止相对路径、环境变量、符号链接及 Windows 特殊路径绕过简单字符串检查。
+
+**主要改动**：
+
+- 新增版本化 `dangerous-path.json`，以公共、macOS、Windows、Linux 四组规则收录凭据、密钥、浏览器会话、通信数据、系统认证、进程内存、个人目录、挂载存储和备份风险。
+- 新增 `isDangerousPath(filepath)`，支持绝对路径、相对路径、`~`、POSIX 变量和 `%USERPROFILE%`、`%APPDATA%`、`%LOCALAPPDATA%` 等 Windows 表达形式。
+- 按目标平台使用 `path.posix` 或 `path.win32`，处理大小写、尾随点和空格、UNC、ADS、设备名、8.3 别名及动态个人目录和挂载卷。
+- 在当前运行平台解析 symlink／junction 的真实目标；对尚不存在的目标解析最近现存父目录，无效输入、未知变量、未知平台和解析错误默认判为危险。
+- 开启 `resolveJsonModule`，确保 TypeScript 构建产物包含规则 JSON；不增加第三方 glob 依赖。
+
+**验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build`、构建产物直接加载和 `git diff --check` 通过，共 35 个测试套件、250 条测试；`isDangerousPath` 的 36 条定向测试覆盖 macOS、Windows、Linux 规则、路径表达式和真实 symlink／junction。
+
 ## 当前结构
 
 ```text
@@ -1070,6 +1102,9 @@ src/agent/
     db.ts                     # 长期记忆主表、FTS5 索引与同步触发器初始化
     memory.ts                 # 长期记忆参数化写入、只读 FTS5 检索与按 ID 删除
     sessions.ts               # SQLite 会话查询与终端表格
+  permission/
+    dangerous-path.json       # macOS、Windows、Linux 危险读取路径数据
+    is-dangerous-path.ts      # 路径展开、平台规范化与危险规则匹配
   skills/                     # Skills 注册、提示词与内置资源
   tools/                      # Tools 注册、实现与安全边界测试
 scripts/
@@ -1092,4 +1127,5 @@ tsconfig.build.json          # 仅编译运行时源码的构建配置
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
 - `load_skill` 返回完整 `SKILL.md`（含 frontmatter），大文件可能占用较多上下文。
 - `run_py` 依赖本机 `python3`，且不像 `run_js` 具备 Node 权限模型级别的文件系统隔离。
+- `isDangerousPath` 已实现但尚未接入 `read_file`、`write_file`；`exec` 无法通过解析任意 shell 字符串可靠拦截间接文件访问，后续需要独立的进程级文件系统沙箱。
 - 流式事件处理仍保留部分 `any`，后续可基于 LangChain 事件类型进一步收紧。

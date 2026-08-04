@@ -55,6 +55,7 @@
 | 39 | `0e52385` | 增加用户画像读写与每轮持久化判断 | [39](./39-profile-prompt.md) |
 | 40 | `26c2082` | 增加 Tool 权限分级并调整执行边界 | [40](./40-tool-permission-level.md) |
 | 41 | `a51ff60` | 增加 Tool 调用 Human-in-the-loop 确认 | [41](./41-tool-human-in-the-loop.md) |
+| 42 | `ae2e00e` | 增加跨平台危险路径基线与匹配器 | [42](./42-dangerous-path-matcher.md) |
 
 ## 核对方式
 

@@ -2,7 +2,7 @@
 
 ## Commit 信息
 
-- Commit：待提交
+- Commit：[`ae2e00e`](https://github.com/qlypupil/mini-agent/commit/ae2e00e24dace6dff402be3164ae0af58826e825)
 - 类型：`feat`
 - 状态：当前实现
 - 基线：`38f2efd fix: 完善画像持久化与实时日期判断`
