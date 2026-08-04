@@ -1,8 +1,10 @@
 import {
+	collectToolApprovalDecisions,
 	compressChatContextIfNeeded,
 	type AutomaticContextCompressionResult,
 } from './agent'
 import { type ContextCompressionResult } from './runtime/context'
+import { type ToolApprovalRequest } from './runtime/graph'
 
 const contextUsage = {
 	model: 'kimi-k2.6',
@@ -64,5 +66,48 @@ describe('automatic Context compression orchestration', () => {
 			status: 'failed',
 			error: 'summary unavailable',
 	})
+	})
+})
+
+describe('tool approval orchestration', () => {
+	const requests = [
+		{
+			id: 'call-1',
+			name: 'read_file',
+			args: { path: '/tmp/a.txt' },
+			permissionLevel: 'read' as const,
+		},
+		{
+			id: 'call-2',
+			name: 'write_file',
+			args: { path: '/tmp/b.txt', content: 'hello' },
+			permissionLevel: 'write' as const,
+		},
+	]
+
+	it('rejects every request when no approval callback is provided', async () => {
+		const onToolEvent = jest.fn()
+
+		await expect(
+			collectToolApprovalDecisions(requests, undefined, onToolEvent),
+		).resolves.toEqual([{ type: 'reject' }, { type: 'reject' }])
+		expect(onToolEvent.mock.calls.map(([event]) => event)).toEqual([
+			{ name: 'read_file', status: 'rejected' },
+			{ name: 'write_file', status: 'rejected' },
+		])
+	})
+
+	it('collects independent decisions in request order', async () => {
+		const reviewed: string[] = []
+		const onToolApproval = jest.fn(async (request: ToolApprovalRequest) => {
+			reviewed.push(request.name)
+			return request.name === 'read_file'
+		})
+
+		await expect(
+			collectToolApprovalDecisions(requests, onToolApproval),
+		).resolves.toEqual([{ type: 'approve' }, { type: 'reject' }])
+		expect(reviewed).toEqual(['read_file', 'write_file'])
+		expect(onToolApproval).toHaveBeenCalledTimes(2)
 	})
 })

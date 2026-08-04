@@ -1,9 +1,14 @@
 import './env'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { BaseMessage } from '@langchain/core/messages'
+import { Command, isInterrupted } from '@langchain/langgraph'
 import {
 	createChatGraph,
 	type ContextControl,
+	type ToolApprovalDecision,
+	type ToolApprovalInterrupt,
+	type ToolApprovalRequest,
+	type ToolApprovalResume,
 } from './runtime/graph'
 import {
 	compressContextMessages,
@@ -164,10 +169,35 @@ export async function compressChatContextIfNeeded(
 	}
 }
 
-type ToolEvent = {
+export type ToolEvent = {
 	name: string
-	status: 'started' | 'completed' | 'failed'
+	status: 'started' | 'completed' | 'failed' | 'rejected'
 	error?: string
+}
+
+export type ToolApprovalHandler = (
+	request: ToolApprovalRequest,
+) => boolean | Promise<boolean>
+
+export async function collectToolApprovalDecisions(
+	requests: ToolApprovalRequest[],
+	onToolApproval?: ToolApprovalHandler,
+	onToolEvent?: (event: ToolEvent) => void,
+	signal?: AbortSignal,
+): Promise<ToolApprovalDecision[]> {
+	const decisions: ToolApprovalDecision[] = []
+	for (const request of requests) {
+		signal?.throwIfAborted()
+		const approved = onToolApproval
+			? await onToolApproval(request)
+			: false
+		decisions.push({ type: approved ? 'approve' : 'reject' })
+		onToolEvent?.({
+			name: request.name,
+			status: approved ? 'started' : 'rejected',
+		})
+	}
+	return decisions
 }
 
 export interface AgentRunResult {
@@ -186,6 +216,7 @@ export interface AgentRunResult {
  * @param {AbortSignal} signal - 用于取消当前 Agent 请求的信号
  * @param {ContextControl} contextControl - 可选的单轮或持久 Context 修改
  * @param {ModelProvider} modelProvider - 本轮请求使用的模型提供商
+ * @param {ToolApprovalHandler} onToolApproval - Tool 执行前的用户确认回调，缺失时默认拒绝
  * @returns {Promise<AgentRunResult>} 完整的 AI 回复文本与最终模型请求的 context 用量
  */
 export async function runAgentStream(
@@ -196,6 +227,7 @@ export async function runAgentStream(
 	onToolEvent?: (event: ToolEvent) => void,
 	contextControl?: ContextControl,
 	modelProvider: ModelProvider = getDefaultModelProvider(),
+	onToolApproval?: ToolApprovalHandler,
 ): Promise<AgentRunResult> {
 	const config = createThreadConfig(threadId)
 	const model = getChatModel(modelProvider)
@@ -203,79 +235,102 @@ export async function runAgentStream(
 	const contextCompression = contextControl
 		? undefined
 		: await contextCompressionStore.get(threadId).catch(() => undefined)
+	let fullResponse = ''
+	const usageMetadata: unknown[] = []
+	let streamInput: any = {
+		messages: [{ role: 'user', content: userMessage }],
+	}
 
-	const stream = await agent.stream(
-		{ messages: [{ role: 'user', content: userMessage }] },
-		{
+	while (true) {
+		const stream = await agent.stream(streamInput, {
 			...config,
-			streamMode: 'messages',
+			streamMode: ['messages', 'updates'],
 			signal,
 			context: { model, contextControl, contextCompression },
-		},
-	)
+		})
+		let approvalRequests: ToolApprovalRequest[] | undefined
 
-	let fullResponse = ''
-	const reportedToolCalls = new Set<string>()
-	const usageMetadata: unknown[] = []
+		for await (const event of stream as any) {
+			const mode = event[0]
+			const chunk = event[1]
 
-	for await (const chunk of stream as any) {
-		// streamMode: 'messages' 的每个事件由消息对象和其运行元数据组成。
-		const message = chunk[0]
-		const metadata = chunk[1]
+			if (mode === 'updates') {
+				if (!isInterrupted<ToolApprovalInterrupt>(chunk)) continue
 
-		if (metadata?.langgraph_node === 'tools') {
-			const toolName = (message as any).name ?? 'unknown tool'
-			const content = String((message as any).content ?? '')
-			let toolError: string | undefined
-			try {
-				const result = JSON.parse(content)
-				if (typeof result.error === 'string') {
-					toolError = result.error
+				for (const pendingInterrupt of chunk.__interrupt__) {
+					const value = pendingInterrupt.value
+					if (
+						!value ||
+						value.type !== 'tool_approval' ||
+						!Array.isArray(value.requests)
+					) {
+						throw new Error('Received an unsupported LangGraph interrupt.')
+					}
+					if (approvalRequests) {
+						throw new Error('Received multiple tool approval interrupts in one graph step.')
+					}
+					approvalRequests = value.requests
 				}
-			} catch {
-				// 非 JSON 工具结果仍可正常显示为完成状态。
+				continue
 			}
-			const isFailure = (message as any).status === 'error' || Boolean(toolError)
-			onToolEvent?.({
-				name: toolName,
-				status: isFailure ? 'failed' : 'completed',
-				error: isFailure ? toolError ?? content : undefined,
-			})
-			continue
-		}
 
-		// 仅向调用方转发模型节点生成的文本，跳过工具和其他图节点事件。
-		if (metadata?.langgraph_node !== 'model_request') {
-			continue
-		}
+			if (mode !== 'messages') continue
+			// messages 模式的事件由消息对象和运行元数据组成。
+			const message = chunk[0]
+			const metadata = chunk[1]
 
-		if ((message as any).usage_metadata !== undefined) {
-			usageMetadata.push((message as any).usage_metadata)
-		}
-
-		// AIMessageChunk 的 content 在 message.content 属性上，不在 kwargs.content
-		const content: string =
-			(message as any).content ?? (message as any).kwargs?.content ?? ''
-
-		const toolCallChunks = (message as any).tool_call_chunks ?? []
-		const toolCalls = (message as any).tool_calls ?? []
-
-		for (const toolCall of toolCalls) {
-			const identifier = toolCall.id ?? toolCall.name
-			if (toolCall.name && !reportedToolCalls.has(identifier)) {
-				reportedToolCalls.add(identifier)
-				onToolEvent?.({ name: toolCall.name, status: 'started' })
+			if (metadata?.langgraph_node === 'tools') {
+				const toolName = (message as any).name ?? 'unknown tool'
+				const content = String((message as any).content ?? '')
+				let toolError: string | undefined
+				try {
+					const result = JSON.parse(content)
+					if (typeof result.error === 'string') {
+						toolError = result.error
+					}
+				} catch {
+					// 非 JSON 工具结果仍可正常显示为完成状态。
+				}
+				const isFailure = (message as any).status === 'error' || Boolean(toolError)
+				onToolEvent?.({
+					name: toolName,
+					status: isFailure ? 'failed' : 'completed',
+					error: isFailure ? toolError ?? content : undefined,
+				})
+				continue
 			}
+
+			// 仅向调用方转发模型节点生成的文本，跳过授权和其他图节点事件。
+			if (metadata?.langgraph_node !== 'model_request') continue
+
+			if ((message as any).usage_metadata !== undefined) {
+				usageMetadata.push((message as any).usage_metadata)
+			}
+
+			// AIMessageChunk 的 content 在 message.content 属性上，不在 kwargs.content。
+			const content: string =
+				(message as any).content ?? (message as any).kwargs?.content ?? ''
+			const toolCallChunks = (message as any).tool_call_chunks ?? []
+
+			// 工具调用参数会在流中分片到达，不能作为用户可见的回复文本输出。
+			if (!content || toolCallChunks.length > 0) continue
+
+			onToken(content)
+			fullResponse += content
 		}
 
-		// 工具调用参数会在流中分片到达，不能作为用户可见的回复文本输出。
-		if (!content || toolCallChunks.length > 0) {
-			continue
-		}
+		if (!approvalRequests) break
 
-		onToken(content)
+		const decisions = await collectToolApprovalDecisions(
+			approvalRequests,
+			onToolApproval,
+			onToolEvent,
+			signal,
+		)
 
-		fullResponse += content
+		streamInput = new Command<ToolApprovalResume>({
+			resume: { decisions },
+		})
 	}
 
 	return {

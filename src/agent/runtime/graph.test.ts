@@ -15,9 +15,16 @@ import {
 	ToolMessage,
 } from '@langchain/core/messages'
 import { fakeModel } from '@langchain/core/testing'
-import { tool } from '@langchain/core/tools'
+import { tool, type StructuredToolInterface } from '@langchain/core/tools'
+import { Command, isInterrupted } from '@langchain/langgraph'
 import { z } from 'zod'
-import { createChatGraph } from './graph'
+import {
+	createChatGraph,
+	type ToolApprovalDecision,
+	type ToolApprovalInterrupt,
+	type ToolApprovalRequest,
+	type ToolApprovalResume,
+} from './graph'
 import * as toolOutput from './tool_output'
 import { createCheckpointer } from '../storage/checkpointer'
 import { initializeDatabase } from '../storage/db'
@@ -26,22 +33,64 @@ import { createMemoryCreateTool } from '../tools/memory_create_tool'
 import { createMemoryDeleteTool } from '../tools/memory_delete_tool'
 import { createMemoryRetrieveTool } from '../tools/memory_retrieve_tool'
 import { createProfileUpdateTool } from '../tools/profile_update_tool'
+import {
+	type PermissionedTool,
+	withPermissionLevel,
+} from '../tools/tool_permission'
 import Database from 'better-sqlite3'
 
-function createTestGraph(model = fakeModel(), testTools: Parameters<typeof createChatGraph>[0]['tools'] = []) {
+function createTestGraph(
+	model = fakeModel(),
+	testTools: StructuredToolInterface[] = [],
+) {
 	const databasePath = join(
 		mkdtempSync(join(tmpdir(), 'termclaw-chat-graph-')),
 		'checkpointer.db',
 	)
 	const checkpointer = createCheckpointer(databasePath)
+	const permissionedTools = testTools.map((testTool) =>
+		'permission_level' in testTool
+			? testTool as PermissionedTool
+			: withPermissionLevel(testTool, 'read'),
+	)
 	const graph = createChatGraph({
 		model,
-		tools: testTools,
+		tools: permissionedTools,
 		systemPrompt: 'system prompt',
 		checkpointer,
 	})
 
 	return { graph, checkpointer }
+}
+
+async function invokeWithToolApprovals(
+	graph: any,
+	input: unknown,
+	config: Record<string, unknown>,
+	decide: (
+		requests: ToolApprovalRequest[],
+		round: number,
+	) => ToolApprovalDecision[] = (requests) =>
+		requests.map(() => ({ type: 'approve' })),
+): Promise<any> {
+	let result = await graph.invoke(input, config)
+	let round = 0
+
+	while (isInterrupted<ToolApprovalInterrupt>(result)) {
+		const value = result.__interrupt__[0]?.value
+		if (!value || value.type !== 'tool_approval') {
+			throw new Error('Expected a tool approval interrupt.')
+		}
+		result = await graph.invoke(
+			new Command<ToolApprovalResume>({
+				resume: { decisions: decide(value.requests, round) },
+			}),
+			config,
+		)
+		round += 1
+	}
+
+	return result
 }
 
 describe('custom chat graph', () => {
@@ -301,6 +350,192 @@ describe('custom chat graph', () => {
 		checkpointer.db.close()
 	})
 
+	it('interrupts before execution and exposes trusted tool details', async () => {
+		const execute = jest.fn(({ text }: { text: string }) => `echo:${text}`)
+		const echo = withPermissionLevel(tool(execute, {
+			name: 'echo',
+			description: 'Echo text.',
+			schema: z.object({ text: z.string() }),
+		}), 'exec')
+		const model = fakeModel().respondWithTools([
+			{ id: 'call-1', name: 'echo', args: { text: 'hello' } },
+		])
+		const { graph, checkpointer } = createTestGraph(model, [echo])
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('use the tool')] },
+			{
+				configurable: { thread_id: 'approval-interrupt-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(execute).not.toHaveBeenCalled()
+		expect(model.callCount).toBe(1)
+		expect(isInterrupted<ToolApprovalInterrupt>(result)).toBe(true)
+		if (isInterrupted<ToolApprovalInterrupt>(result)) {
+			expect(result.__interrupt__[0]?.value).toEqual({
+				type: 'tool_approval',
+				requests: [
+					{
+						id: 'call-1',
+						name: 'echo',
+						args: { text: 'hello' },
+						permissionLevel: 'exec',
+					},
+				],
+			})
+		}
+		checkpointer.db.close()
+	})
+
+	it('returns a rejected tool call to the model without executing it', async () => {
+		const execute = jest.fn(() => 'should not run')
+		const rejectedTool = tool(execute, {
+			name: 'rejected_tool',
+			description: 'Must be rejected.',
+			schema: z.object({}),
+		})
+		const log = jest.spyOn(console, 'log').mockImplementation()
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-rejected', name: 'rejected_tool', args: {} },
+			])
+			.respond(new AIMessage('The tool was not executed.'))
+		const { graph, checkpointer } = createTestGraph(model, [rejectedTool])
+		const config = {
+			configurable: { thread_id: 'rejected-tool-thread' },
+			context: {
+				model: undefined,
+				contextControl: undefined,
+				contextCompression: undefined,
+			},
+		}
+
+		const result = await invokeWithToolApprovals(
+			graph,
+			{ messages: [new HumanMessage('use the tool')] },
+			config,
+			(requests) => requests.map(() => ({ type: 'reject' })),
+		)
+
+		expect(execute).not.toHaveBeenCalled()
+		expect(log).not.toHaveBeenCalledWith('[Tool] rejected_tool')
+		expect(model.callCount).toBe(2)
+		const rejectedMessage = model.calls[1].messages.find(
+			(message) => ToolMessage.isInstance(message),
+		)
+		expect(rejectedMessage).toMatchObject({
+			name: 'rejected_tool',
+			tool_call_id: 'call-rejected',
+			status: 'error',
+			content: expect.stringContaining('was not executed'),
+		})
+		expect(result.messages.at(-1)?.content).toBe('The tool was not executed.')
+		checkpointer.db.close()
+	})
+
+	it('executes only approved calls when decisions are mixed', async () => {
+		const executeApproved = jest.fn(() => 'approved result')
+		const executeRejected = jest.fn(() => 'rejected result')
+		const approvedTool = tool(executeApproved, {
+			name: 'approved_tool',
+			description: 'Approved tool.',
+			schema: z.object({}),
+		})
+		const rejectedTool = tool(executeRejected, {
+			name: 'rejected_tool',
+			description: 'Rejected tool.',
+			schema: z.object({}),
+		})
+		const log = jest.spyOn(console, 'log').mockImplementation()
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-approved', name: 'approved_tool', args: {} },
+				{ id: 'call-rejected', name: 'rejected_tool', args: {} },
+			])
+			.respond(new AIMessage('handled'))
+		const { graph, checkpointer } = createTestGraph(model, [
+			approvedTool,
+			rejectedTool,
+		])
+
+		await invokeWithToolApprovals(
+			graph,
+			{ messages: [new HumanMessage('use both tools')] },
+			{
+				configurable: { thread_id: 'mixed-tool-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+			() => [{ type: 'approve' }, { type: 'reject' }],
+		)
+
+		expect(executeApproved).toHaveBeenCalledTimes(1)
+		expect(executeRejected).not.toHaveBeenCalled()
+		expect(log).toHaveBeenCalledWith('[Tool] approved_tool')
+		expect(log).not.toHaveBeenCalledWith('[Tool] rejected_tool')
+		const toolMessages = model.calls[1].messages.filter((message) =>
+			ToolMessage.isInstance(message),
+		) as ToolMessage[]
+		expect(toolMessages).toHaveLength(2)
+		expect(toolMessages).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					tool_call_id: 'call-approved',
+					status: 'success',
+				}),
+				expect.objectContaining({
+					tool_call_id: 'call-rejected',
+					status: 'error',
+				}),
+			]),
+		)
+		checkpointer.db.close()
+	})
+
+	it('rejects a resume response with the wrong number of decisions', async () => {
+		const execute = jest.fn(() => 'result')
+		const echo = tool(execute, {
+			name: 'echo',
+			description: 'Echo.',
+			schema: z.object({}),
+		})
+		const model = fakeModel().respondWithTools([
+			{ id: 'call-1', name: 'echo', args: {} },
+		])
+		const { graph, checkpointer } = createTestGraph(model, [echo])
+		const config = {
+			configurable: { thread_id: 'invalid-approval-thread' },
+			context: {
+				model: undefined,
+				contextControl: undefined,
+				contextCompression: undefined,
+			},
+		}
+
+		await graph.invoke(
+			{ messages: [new HumanMessage('use the tool')] },
+			config,
+		)
+		await expect(
+			graph.invoke(
+				new Command<ToolApprovalResume>({
+					resume: { decisions: [] },
+				}) as any,
+				config,
+			),
+		).rejects.toThrow('expected 1 decisions, received 0')
+		expect(execute).not.toHaveBeenCalled()
+		checkpointer.db.close()
+	})
+
 	it('returns tool results to the model through the tools node', async () => {
 		const callOrder: string[] = []
 		const log = jest.spyOn(console, 'log').mockImplementation((message) => {
@@ -321,7 +556,8 @@ describe('custom chat graph', () => {
 			.respond(new AIMessage('final'))
 		const { graph, checkpointer } = createTestGraph(model, [echo])
 
-		const result = await graph.invoke(
+		const result = await invokeWithToolApprovals(
+			graph,
 			{ messages: [new HumanMessage('use the tool')] },
 			{
 					configurable: { thread_id: 'tool-thread' },
@@ -367,7 +603,8 @@ describe('custom chat graph', () => {
 					new HumanMessage({ id: 'existing-message', content: '已有历史' }),
 				],
 			})
-			await graph.invoke(
+			await invokeWithToolApprovals(
+				graph,
 				{ messages: [new HumanMessage('我还会 TypeScript')] },
 				{
 					...config,
@@ -436,7 +673,8 @@ describe('custom chat graph', () => {
 			messages: [new HumanMessage({ id: 'existing-message', content: '已有历史' })],
 		})
 
-		await graph.invoke(
+		await invokeWithToolApprovals(
+			graph,
 			{ messages: [new HumanMessage('请记住我的回答偏好')] },
 			{
 				...config,
@@ -506,7 +744,8 @@ describe('custom chat graph', () => {
 			messages: [new HumanMessage({ id: 'existing-message', content: '已有历史' })],
 		})
 
-		await graph.invoke(
+		await invokeWithToolApprovals(
+			graph,
 			{ messages: [new HumanMessage('你记得我的回答偏好吗？')] },
 			{
 				...config,
@@ -599,7 +838,8 @@ describe('custom chat graph', () => {
 			messages: [new HumanMessage({ id: 'existing-message', content: '已有历史' })],
 		})
 
-		await graph.invoke(
+		await invokeWithToolApprovals(
+			graph,
 			{ messages: [new HumanMessage('忘记我的水果偏好')] },
 			{
 				...config,
@@ -662,7 +902,8 @@ describe('custom chat graph', () => {
 			.respond(new AIMessage('handled'))
 		const { graph, checkpointer } = createTestGraph(model, [failingTool])
 
-		await graph.invoke(
+		await invokeWithToolApprovals(
+			graph,
 			{ messages: [new HumanMessage('use the tool')] },
 			{
 				configurable: { thread_id: 'failed-tool-thread' },
@@ -710,7 +951,8 @@ describe('custom chat graph', () => {
 			.respond(new AIMessage('handled'))
 		const { graph, checkpointer } = createTestGraph(model, [largeOutput])
 
-		await graph.invoke(
+		await invokeWithToolApprovals(
+			graph,
 			{ messages: [new HumanMessage('use the tool')] },
 			{
 				configurable: { thread_id: 'large-tool-thread' },

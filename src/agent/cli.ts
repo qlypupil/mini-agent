@@ -19,7 +19,12 @@ import { printStartupBanner } from './cli/banner'
 import { ContextSessionManager } from './cli/context_commands'
 import { handleInteractiveCommand } from './cli/commands'
 import { selectMenu, type SelectMenuOption } from './cli/select_menu'
+import {
+	formatToolApprovalRequest,
+	parseToolApprovalAnswer,
+} from './cli/tool_confirmation'
 import { formatContextUsage } from './runtime/context_usage'
+import type { ToolApprovalRequest } from './runtime/graph'
 import {
 	getDefaultModelProvider,
 	getModelMetadata,
@@ -107,12 +112,39 @@ function setupKeyboardControls(): () => void {
 }
 
 // 将 readline 基于回调的 question API 包装为 Promise，方便在 while 循环中使用 await。
-function prompt(question: string): Promise<string> {
-	return new Promise((resolve) => {
-		rl.question(question, (answer) => {
+function prompt(question: string, signal?: AbortSignal): Promise<string> {
+	return new Promise((resolve, reject) => {
+		if (!signal) {
+			rl.question(question, resolve)
+			return
+		}
+
+		signal.throwIfAborted()
+		const onAbort = () => {
+			reject(signal.reason ?? new Error('The prompt was aborted.'))
+		}
+		signal.addEventListener('abort', onAbort, { once: true })
+		rl.question(question, { signal }, (answer) => {
+			signal.removeEventListener('abort', onAbort)
 			resolve(answer)
 		})
 	})
+}
+
+async function confirmToolCall(
+	request: ToolApprovalRequest,
+	signal: AbortSignal,
+): Promise<boolean> {
+	process.stdout.write(`${chalk.yellow(formatToolApprovalRequest(request))}\n`)
+
+	while (true) {
+		const answer = parseToolApprovalAnswer(
+			await prompt(chalk.yellow('允许调用此 Tool？[y/N]：'), signal),
+		)
+		if (answer === 'approve') return true
+		if (answer === 'reject') return false
+		process.stdout.write(chalk.yellow('请输入 y/yes 或 n/no。\n'))
+	}
 }
 
 async function showSelectMenu<T extends string>(
@@ -234,6 +266,15 @@ async function chat(userInput: string): Promise<void> {
 					return
 				}
 
+				if (event.status === 'rejected') {
+					const separator = toolLogLineReady ? '' : '\n'
+					process.stdout.write(
+						`${separator}${chalk.yellow(`[Tool] ${event.name} rejected`)}\n`,
+					)
+					toolLogLineReady = true
+					return
+				}
+
 				if (event.status === 'failed') {
 					const detail = event.error
 						? chalk.red.dim(`: ${event.error.slice(0, 200)}`)
@@ -248,6 +289,13 @@ async function chat(userInput: string): Promise<void> {
 			},
 			contextControl,
 			requestModelProvider,
+			async (request) => {
+				if (!toolLogLineReady) {
+					process.stdout.write('\n')
+				}
+				toolLogLineReady = true
+				return confirmToolCall(request, controller.signal)
+			},
 		)
 		if (contextControl) {
 			contextSession.completeNextContextControl(requestThreadId)
