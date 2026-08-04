@@ -92,7 +92,7 @@ const currentTime = tool(
 	{
 		name: 'current_time',
 		description:
-			'Get the current date, time, and time zone from the local system. Use this for questions about today or the current time.',
+			'Get the current date, time, and time zone from the local system. For live weather, news, price, or sports requests using current, now, today, tomorrow, or the day after tomorrow, call this in an earlier tool round and wait for its ToolMessage before calling web_search; never batch web_search with this call.',
 		schema: z.object({}),
 	},
 )

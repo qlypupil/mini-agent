@@ -40,4 +40,26 @@ describe('tool permissions', () => {
 		expect(createMemoryDeleteTool().permission_level).toBe('db')
 		expect(createProfileUpdateTool().permission_level).toBe('write')
 	})
+
+	it('describes relative-date search as a sequential tool flow', () => {
+		const currentTime = tools.find((registeredTool) =>
+			registeredTool.name === 'current_time',
+		)
+		const webSearch = tools.find((registeredTool) =>
+			registeredTool.name === 'web_search',
+		)
+
+		expect(currentTime?.description).toContain(
+			'call this in an earlier tool round and wait for its ToolMessage before calling web_search',
+		)
+		expect(currentTime?.description).toContain(
+			'never batch web_search with this call',
+		)
+		expect(webSearch?.description).toContain(
+			'only after a successful current_time ToolMessage from an earlier tool round',
+		)
+		expect(webSearch?.description).toContain(
+			'include the resolved YYYY-MM-DD date in the query',
+		)
+	})
 })

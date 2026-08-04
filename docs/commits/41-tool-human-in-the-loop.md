@@ -2,7 +2,7 @@
 
 ## Commit 信息
 
-- Commit：待提交
+- Commit：[`a51ff60`](https://github.com/qlypupil/mini-agent/commit/a51ff6061aaf2a902b180c60c6a5ce93550d6db0)
 - 类型：`feat`
 - 状态：当前实现
 - 基线：`9cec499 docs: 补齐工具权限与执行边界提交信息`

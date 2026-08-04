@@ -35,6 +35,14 @@ cp .env.example .env
 
 Agent 使用 LangGraph SQLite checkpointer 按 `threadId` 保存会话历史。数据库位于当前工作目录 `.data/checkpointer.db`；自动压缩状态单独保存在 `.data/context-compression/`，不会删除、替换或重写 SQLite 中的原始消息。Tool 返回超过 50,000 字符的字符串时，完整结果会写入当前工作目录的 `tool_output/`，传给模型和 checkpointer 的 `ToolMessage` 只保留文件路径与前 2000 字预览。模型请求前还会临时简化更早的历史 `ToolMessage`：当前轮、历史中最近 3 条以及所有 `read_file` 结果保留原文，其余结果替换为 `[Previous: used <toolName>]`；其他消息及 SQLite 中的历史不受影响。每次 CLI 启动会创建新的会话 ID，因此不会自动引用上一次启动的对话。聊天过程中输入 `/new` 也会立即创建新的会话 ID，后续消息不会携带当前会话的历史。输入 `/sessions` 可用终端表格只读列出最近 20 个会话的完整 ID、最后用户输入和相对时间；输入 `/rewind <thread_id>` 可恢复列表中的历史会话及其自动压缩状态。`.data/` 与 `tool_output/` 已被 Git 忽略。
 
+## 用户画像与长期记忆
+
+当前稳定的姓名、地区、沟通偏好、兴趣、技能和工作等用户画像保存在当前工作目录的 `.data/profile.md`；带时间的教育、工作和迁居经历等长期信息保存在 `.data/memory.db`，并由 `memory_fts` 提供全文检索。分类规则要求同一个事实只进入 Profile、Memory 或不持久化三者之一；临时状态、一次性任务、查询参数、模型推断和敏感信息不应持久化。
+
+System Prompt 要求模型在每条新用户消息的最终答复前，分别判断当前任务、Profile 更新和 Memory 创建。完成搜索等业务 Tool 不能跳过持久化判断，一条消息可以同时需要业务 Tool 与 `profile_update` 或 `memory_create`，并分别等待用户确认。“我住在郑州，查一下今天天气”需要更新地区并查询天气；“帮我查郑州天气”只把郑州视为查询地点，不能据此更新用户画像。写入 Profile 时只保留用户明确表达的信息，不补充未陈述的地理层级或其他派生细节。
+
+`profile_update` 每次提交包含全部仍有效信息的完整 Markdown，覆盖前会保存历史备份。`memory_retrieve` 只在当前 Context 无法回答个人记忆问题时检索长期记忆；`memory_delete` 需要先确定唯一记忆 ID。Profile 在 Agent 启动时载入 System Prompt，因此运行期间更新文件后，需要重启进程才会让新内容进入后续新会话的 Prompt。
+
 ## Context 管理
 
 Agent 使用自定义 LangGraph `StateGraph`，由 `messages` 保存 checkpointer 中的真实聊天记录，并在 `model_request` 节点决定下一次模型接口实际收到哪些消息。在交互终端输入裸 `/context` 会先打开操作菜单；需要范围、替换内容或文件路径时，再逐项输入必要参数。“应用暂存修改”会继续打开 `once`、`persist`、`fork` 二级菜单。原有完整命令全部保留，适合熟练操作和非 TTY 环境：
@@ -64,9 +72,11 @@ Context 操作按 message ID 应用，工具调用的 `AIMessage` 与对应 `Too
 
 ## 文件工具
 
-Agent 可以读取或写入当前工作目录及其子目录中的 UTF-8 普通文件。文件工具拒绝绝对路径、`..` 越界、符号链接越界、`.env*` 和 `.git/`，避免模型读取或覆写敏感内容。`write_file` 会创建新文件或完整覆写已有文件，但不会创建缺失的父目录。
+Agent 可以读取或写入当前进程有权限访问的任意目录中的 UTF-8 普通文件。相对路径以当前工作目录为基准，也支持绝对路径、`..` 和跨目录符号链接；文件工具继续拒绝 `.env*`、`.git/` 和非普通文件。`write_file` 会创建新文件或完整覆写已有文件，但不会创建缺失的父目录。
 
-`exec` 只允许执行 `ls`、`find`、`rg`、`pwd` 和只读 Git 查询。它不解析 shell 语法，不接受任意命令，并限制单次执行 5 秒、输出 64 KB，避免模型执行删除或其他写入操作。
+`exec` 接受完整 shell 命令，支持任意可执行文件、管道、重定向和状态修改。命令默认在当前工作目录执行，不继承交互式标准输入，并限制单次执行 5 秒、输出 64 KB。
+
+所有 ToolCall 在执行前都会通过 LangGraph human-in-the-loop 中断并等待本次用户确认，包括读取、本机时间、Skill、网络、数据库和写入操作。CLI 会逐个展示 Tool 名称、`permission_level` 和完整参数；输入 `y` 或 `yes` 才会执行，输入 `n`、`no` 或直接回车则拒绝。拒绝的 Tool 不会执行，Agent 会收到拒绝结果并向用户说明，且不得改用其他 Tool 绕过。
 
 `run_js` 在 Node 权限模型子进程中执行 JavaScript。子进程不继承项目环境变量，且默认没有文件系统、网络、子进程或 worker 权限；单次执行限制 5 秒、代码 20 KB、输出 64 KB。
 
@@ -74,7 +84,7 @@ Agent 可以读取或写入当前工作目录及其子目录中的 UTF-8 普通�
 
 `web_search` 使用 Tavily 搜索当前网页信息，每次最多返回 3 条通用搜索结果，并附带 Tavily 生成的答案。查询内容会发送给 Tavily API，并消耗对应的 API 配额。
 
-`current_time` 从本机读取当前日期、时间和时区，专门处理“今天”和“现在”问题。新闻、天气、价格和体育赛事等实时信息由 `web_search` 检索，Agent 会基于成功返回的结果作答。CLI 会显示工具的开始、完成或失败状态，便于区分模型未检索与检索失败。
+`current_time` 从本机读取当前日期、时间和时区。只询问当前日期或时间时，Agent 直接根据该 Tool 的结果回答；天气、新闻、价格和体育赛事等问题包含“当前”“今天”“明天”等相对日期时，Agent 必须先等待 `current_time` 返回，再把换算后的本地明确日期写入 `web_search` 查询。两个 Tool 分轮调用并分别等待确认，最终回答会以本机日期校验今天、明天和后天，避免把旧搜索结果误标为当前日期。不含相对日期的普通实时查询仍直接使用 `web_search`。CLI 会显示工具的开始、完成或失败状态，便于区分模型未检索与检索失败。
 
 `web_fetch` 只允许抓取公网 HTTP(S) 地址，拒绝本机和内网地址。请求限制为 10 秒、最多 3 次重定向和 1 MB 响应；为避免超出模型上下文，传给 Agent 的文本最多 8 KB。
 

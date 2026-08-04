@@ -38,6 +38,7 @@
 - 新增 Tavily `web_search` 工具及 SDK 调用单元测试。
 - 移除返回固定结果的示例 `search` 工具，避免与 Tavily 搜索能力冲突。
 - 新增读取本机日期、时间与时区的 `current_time` 工具，处理“今天”和“现在”问题。
+- 相对日期实时查询使用严格两阶段流程：先取得 `current_time` ToolMessage，再用换算后的本地 `YYYY-MM-DD` 日期调用 `web_search`；Profile／Memory 判断仍独立执行，最终答复校验今天、明天和后天的日期标签。
 - 新增受限公网访问的 `web_fetch` 工具及 URL、响应大小与网络失败测试。
 - 接入 Agent Skills 发现、模型目录披露与按需 `load_skill` 激活机制。
 - 默认模型切换为通用 Agent 模型 `kimi-k2.6`。
@@ -86,9 +87,11 @@
 - 抽离独立 `prompt.ts`，集中构建 System Prompt；`profilePrompt` 从当前目录 `.data/profile.md` 读取用户画像，以 `<profile_info>` 包裹，缺失或空内容使用空标签；模板范围内的当前稳定状态写入 Profile，具备长期价值的带时间经历写为 `event` memory，临时琐事不持久化，并禁止从事件推断未陈述信息。
 - 新增 `profile_update` Tool：模型将新变化与 `<profile_info>` 中仍有效的信息合并为完整 Markdown，Tool 在覆盖 `.data/profile.md` 前保留唯一历史备份，并通过临时文件原子替换主文件。
 - `profile_update` 固定写入当前工作目录，拒绝模型指定路径、空内容、外层标签、目录及符号链接目标；Tool description 不暴露路径和备份实现。
-- 为全部 13 个已注册 Tool 增加 `read`、`write`、`exec`、`network` 或 `db` 权限属性；统一类型和注册表编译期约束可防止后续新增 Tool 时漏配权限，但当前不执行权限拦截。
-- `read_file`、`write_file` 支持绝对路径、`../` 相对路径和跨目录符号链接，可访问当前进程有权限操作的任意目录；继续拒绝 `.env*`、`.git` 和非普通文件。System Prompt 会为明确的文件请求发起对应 ToolCall，并禁止在授权拒绝后改用其他 Tool 绕过，统一权限拦截留待后续实现。
-- `exec` 输入收敛为完整 `command` 字符串并通过 shell 执行，支持原白名单外命令、管道、重定向和状态修改；移除命令及路径限制，保留 5 秒超时、64 KB 输出上限和非零退出错误，统一权限拦截留待后续实现。
+- System Prompt 要求模型对每条新用户消息独立判断当前任务、Profile 更新和 Memory 创建；业务 Tool 不能替代持久化判断，同一消息可提出多个调用，并禁止从查询参数推断画像或补充用户未陈述的派生信息。
+- 为全部 13 个已注册 Tool 增加 `read`、`write`、`exec`、`network` 或 `db` 权限属性；统一类型和注册表编译期约束可防止后续新增 Tool 时漏配权限。
+- `read_file`、`write_file` 支持绝对路径、`../` 相对路径和跨目录符号链接，可访问当前进程有权限操作的任意目录；继续拒绝 `.env*`、`.git` 和非普通文件。System Prompt 会为明确的文件请求发起对应 ToolCall，并禁止在授权拒绝后改用其他 Tool 绕过。
+- `exec` 输入收敛为完整 `command` 字符串并通过 shell 执行，支持原白名单外命令、管道、重定向和状态修改；移除命令及路径限制，保留 5 秒超时、64 KB 输出上限和非零退出错误。
+- 新增 LangGraph human-in-the-loop Tool 确认：全部已注册 ToolCall 在执行前进入 `authorize_tools` 动态中断，CLI 按顺序展示可信权限等级和完整参数；逐项批准后才执行，拒绝或缺少确认回调时不执行并将拒绝结果返回模型。
 
 ## 进行中
 
@@ -96,11 +99,10 @@
 
 ## 待办
 
-- 使用真实 Kimi 和 DeepSeek 验证 Profile 首次记录、单字段更正、多字段合并、信息删除，以及“当前状态 / 带时间事件”的分类决策。
+- 使用真实 Kimi 和 DeepSeek 验证 Profile 单字段更正、多字段合并、信息删除，以及 Tool 获批后的完整文件更新。
 - 使用真实 Kimi 和 DeepSeek 补充冲突记忆的检索与回答回归。
 - 使用真实 Kimi 和 DeepSeek 验证单一目标、多个候选和不存在目标的长期记忆删除决策。
 - 评估请求前自动召回与非持久化 Context 注入。
-- 基于 `permission_level` 设计并实现 Tool 调用授权、用户确认和拒绝流程。
 
 ## 阻塞
 
@@ -175,3 +177,6 @@
 - Prompt 模块抽离、Profile 文件缺失与空内容回退、非空信息包裹、读取错误边界、Memory 排除规则及系统提示词顺序回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（31 个测试套件、176 条测试）。
 - `profile_update` 全量更新、历史备份、原子替换、路径与符号链接边界、Prompt 规则、统一注册和 Graph 工具循环回归通过；当前状态与带时间事件的分类回归已补齐，`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（32 个测试套件、188 条测试）。构建产物已在独立临时目录完成创建、更新和备份验证；本地实际误分类通过备份修正，迁移后的 `event` memory 可由正式检索流程命中。
 - Tool 权限分级、13 个注册实例映射、Memory／Profile 工厂返回值、第三方 Tavily Tool 属性、文件 Tool 跨目录访问、文件请求 Prompt 路由，以及 `exec` 完整命令与 shell 管道回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（33 个测试套件、197 条测试）。Kimi、DeepSeek 均自主调用 `write_file`；构建产物中的注册 `exec` 已成功执行原白名单外的管道命令。
+- Tool human-in-the-loop 动态中断、同线程恢复、可信权限载荷、默认拒绝、逐项批准／拒绝、混合决定和 CLI 输入解析回归通过；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（34 个测试套件、210 条测试）。
+- 每轮 Profile／Memory 独立判断回归通过；Prompt 测试覆盖业务 Tool 与持久化 Tool 共存、查询地点不等于用户地区、带年份经历归 `event` Memory、临时状态不持久化及禁止补充派生地区。`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（34 个测试套件、212 条测试）。真实 Kimi、DeepSeek 均通过组合请求、纯查询地点、带时间事件和临时状态四类 Tool 选择验证；DeepSeek 收紧规则后按原话生成“地区：郑州”。
+- 相对日期实时查询回归通过；System Prompt 与 `current_time`、`web_search` descriptions 共同约束两阶段顺序、明确日期查询、结果标签校验和 Profile 独立更新。`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（34 个测试套件、214 条测试）。真实 Kimi、DeepSeek 对“我的城市在郑州，你查下当前的天气吧”均先调用 `current_time` 与 `profile_update`，再使用 `2026-08-03` 搜索，并正确标注 8 月 3 日、4 日和 5 日。

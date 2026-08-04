@@ -6,7 +6,7 @@ import { withPermissionLevel } from './tool_permission'
 export const tavilySearchOptions = {
 	name: 'web_search',
 	description:
-		'Search the web with Tavily and return up to three general results.',
+		'Search the web with Tavily and return up to three general results. For a query using current, now, today, tomorrow, or the day after tomorrow, call only after a successful current_time ToolMessage from an earlier tool round, and include the resolved YYYY-MM-DD date in the query; never batch this call with current_time.',
 	maxResults: 3,
 	topic: 'general',
 	includeAnswer: true,

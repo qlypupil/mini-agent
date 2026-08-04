@@ -6,7 +6,7 @@
 - 类型：`feat`
 - 状态：当前实现
 - 基线：`474e2ac docs: 补齐长期记忆删除提交信息`
-- 实现范围：Prompt 模块抽离、Profile 模板、本地读取、全量更新、历史备份、Memory 职责边界与回归验证。
+- 实现范围：Prompt 模块抽离、Profile 模板、本地读取、全量更新、历史备份、每轮独立持久化判断、Memory 职责边界与回归验证。
 
 ## 一、背景
 
@@ -84,12 +84,35 @@ profile.md 的内容
 
 同一句话同时包含当前状态和过去事件时，需要分别处理，不得因为其中一部分符合模板而把整句话写入 Profile。模型只能记录用户明确陈述的事实，不得从教育或工作事件推断年龄、毕业年份、学历、从业年限等未说明信息。现有关于敏感信息、秘密信息和 Tool 调用边界的规则保持不变。
 
+### 每轮独立持久化判断
+
+模型处理每一条新的用户消息时，必须在给出最终答复前分别完成三项判断：
+
+1. 当前请求需要回答问题，还是调用实时搜索、文件等业务 Tool。
+2. 消息是否明确新增、更正或删除了当前稳定的 Profile 信息。
+3. 消息是否包含应创建为长期 Memory 的事实、偏好、重要事件或技能。
+
+三项判断互相独立。调用业务 Tool 或根据 Tool 结果回答当前问题，不代表已经完成 Profile／Memory 判断；一条消息可以同时触发业务 Tool 与 `profile_update` 或 `memory_create`。模型既可以在同一批 ToolCall 中提出多个调用，也可以在业务 Tool 返回后、最终答复前继续调用持久化 Tool。接入 human-in-the-loop 后，每个调用仍分别等待用户确认。
+
+“每轮判断”不等于“每轮持久化”。模型只记录用户明确陈述且满足既有分类规则的信息，并按事实逐项归类：同一个事实只能进入 Profile、Memory 或不持久化三者之一；一句话包含多个不同事实时，可以分别归入不同位置。查询对象、任务参数、第三方信息和模型推断不能作为用户画像，例如用户只说“查一下郑州天气”时，不能推断用户位于郑州。即使事实本身已明确，写入时也只能保留用户表达的含义，不得补充未陈述的地理层级或其他派生细节。当前 Profile 没有地区信息且用户说“我住在郑州”时，必须按原话记录“地区：郑州”；除非用户明确说出“河南省”，否则禁止自行扩写为“河南省郑州市”。已有 Profile 中未被本次消息否定的更详细信息仍按全量更新规则保留。
+
+典型组合场景如下：
+
+| 用户消息 | 任务处理 | 持久化判断 |
+| --- | --- | --- |
+| 我住在郑州，查一下今天天气 | 先调用 `current_time`，再用明确日期调用 `web_search` | 第一批同时调用 `profile_update` 保存当前地区 |
+| 帮我查郑州天气 | 调用 `web_search` | 不得据此更新 Profile 或 Memory |
+| 我在的城市是郑州 | 根据上下文决定是否还需搜索 | 调用 `profile_update` 保存当前地区 |
+| 我 2010 年上的大学 | 正常回应 | 调用 `memory_create` 保存 `event`，不更新 Profile |
+| 我今天有点累 | 正常回应 | 临时状态，默认不持久化 |
+
 ## 三、拼接顺序
 
 最终 System Prompt 按以下顺序组成：
 
 ```text
 realtimeInstructions
+fileInstructions
 profilePrompt
   profile_template
   profile data safety rule
@@ -97,6 +120,7 @@ profilePrompt
   profile_update rule
   profile_info
 memoryInstructions
+persistenceInstructions
 skillsInstruction
 ```
 
@@ -111,6 +135,7 @@ skillsInstruction
 - `buildSystemPrompt()` 默认读取 `resolve(process.cwd(), '.data/profile.md')`，并允许测试注入临时文件路径。
 - 将 System Prompt 测试从 `agent.test.ts` 迁移到同目录的 `prompt.test.ts`。
 - `profilePrompt` 增加当前稳定状态边界、事件排除、禁止推断、全量合并和调用 `profile_update` 的规则。
+- System Prompt 要求模型对每条新用户消息独立判断任务处理、Profile 更新和 Memory 创建，并允许同轮调用业务与持久化 Tool。
 - 不修改 Memory Tool、SQLite Schema、FTS5 索引或 StateGraph 工具循环。
 - 不增加依赖，不修改 lockfile。
 
@@ -150,6 +175,12 @@ Update the user's current, stable profile attributes covered by <profile_templat
 Profile contains only the user's explicitly stated current, stable attributes or state covered by <profile_template>. Do not place dated or time-bound past experiences in the profile. Education milestones, job changes, relocations, and similar durable past events belong in long-term memory as event entries. Never infer the user's age, graduation year, degree, or career length from such events.
 
 When current profile information changes, call profile_update with the complete updated profile. Apply the requested additions, corrections, or removals while preserving every other still-valid detail from <profile_info>; never submit only the changed fragment.
+```
+
+同时增加每轮独立判断规则：
+
+```text
+For every new user message, before giving the final answer, independently evaluate the immediate task, profile persistence, and long-term memory persistence. Handling the immediate task or calling another tool never replaces the profile and memory evaluation. A single message may require both task tools and persistence tools. Classify each explicitly stated fact exactly once as profile, memory, or non-persistent information. Do not infer profile facts from task subjects or parameters. Persist only the user's explicit meaning; do not enrich it with unstated geographic hierarchy or other derived details. For a new location absent from <profile_info>, copy the user's location value verbatim: "我住在郑州" must be stored as "地区：郑州"; writing "河南省郑州市" is forbidden unless the user explicitly stated "河南省".
 ```
 
 `memoryInstructions` 同时明确反向边界：
@@ -306,18 +337,23 @@ ROADMAP.md                               # 同步 Profile 读写完成状态
 7. `memoryInstructions` 禁止将符合模板的当前稳定状态存为 memory，同时要求把具备长期价值的带时间经历保存为 `event` memory，并忽略临时琐事。
 8. Skills 指令仍位于 Agent 基础指令之后。
 9. 非 `ENOENT` 文件错误不会被静默吞掉。
-10. `pnpm typecheck`、`pnpm test` 与 `git diff --check` 通过。
+10. `pnpm typecheck`、`pnpm test`、`pnpm build` 与 `git diff --check` 通过。
+11. System Prompt 明确要求每条新用户消息在最终答复前独立完成任务、Profile 与 Memory 判断。
+12. System Prompt 允许业务 Tool 与持久化 Tool 共存，同时禁止从查询地点等任务参数推断 Profile，或为明确事实补充用户未陈述的派生细节。
 
 ## 七、验证结果
 
-- 5 条 Prompt 测试覆盖 Profile 文件不存在、纯空白、正常内容、非 `ENOENT` 读取错误、`profile_update` 规则顺序，以及带时间经历归属 `event` memory 的分类边界。
+- 9 条 Prompt 测试覆盖 Profile 文件不存在、纯空白、正常内容、非 `ENOENT` 读取错误、`profile_update` 规则顺序、带时间经历归属 `event` memory、每轮独立判断、显式事实边界，以及相对日期实时查询不跳过 Profile 更新。
 - 10 条 `profile_update` 测试覆盖首次创建、内容规范化、历史备份、连续更新、空文件备份、Schema、description、统一注册、目录和符号链接边界。
 - Graph 回归确认 Fake Model 可调用 `profile_update`，ToolMessage 保留名称和调用 ID，主文件与备份正确写入，已有 checkpointer 历史不被重写。
 - `agent.ts` 已不再包含 System Prompt 常量或构建逻辑，只调用 `prompt.ts` 导出的 `buildSystemPrompt()`。
-- `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过，共 32 个测试套件、188 条测试。
+- `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过，共 34 个测试套件、214 条测试。
 - 构建产物在独立临时工作目录完成首次创建和再次更新，得到 `created`、`updated`、一个历史备份和正确的新旧文件内容，未访问项目真实 `.data/profile.md`。
 - 构建产物检查确认“当前稳定状态归 Profile”“带时间经历归 `event` memory”和“禁止从事件推断个人信息”三项规则均进入最终 System Prompt；`profile_update` description 同步排除带时间的过去事件。
 - 本地实际误分类修正通过 `profile_update` 先备份再更新，迁移后的 `event` memory 已由正式 `memory_retrieve` 流程命中，`memory_fts` 同步有效。
+- 真实 Kimi 回归中，“居住地＋当前天气”第一批选择 `current_time` 与 `profile_update`，第二批使用明确日期调用 `web_search`；纯天气地点不更新 Profile，带年份教育经历只选择 `memory_create(event)`，临时状态不调用持久化 Tool。
+- 真实 DeepSeek 回归通过同类分类场景；首次组合场景将“郑州”扩写为“河南省郑州市”，收紧显式事实规则后生成精确的“地区：郑州”；相对日期状态机强化后，最终同样先完成 `current_time` 与 `profile_update`，再执行带日期搜索。
+- 真实模型回归只模拟成功 ToolMessage 以观察完整选择链，没有执行搜索、写入 Profile 或写入 Memory，因此未污染项目 `.data`。
 - `git diff --check` 通过。
 
 ## 八、后续边界
@@ -325,7 +361,7 @@ ROADMAP.md                               # 同步 Profile 读写完成状态
 - `buildSystemPrompt()` 在 Agent 初始化时执行，Profile 是当前进程启动时的快照；运行期间修改文件需要重启后才能进入 System Prompt。
 - `.data/profile.md` 归属于当前工作目录，并由同一目录下的所有会话共享，不按 `thread_id` 隔离。
 - `profile_update` 已形成 Profile 信息分类、读取、全量持久化和历史备份闭环。
-- 使用真实 Kimi 和 DeepSeek 验证首次记录、单字段更正、多字段合并、信息删除，以及“当前状态 / 带时间事件”的分类决策。
+- 继续使用真实 Kimi 和 DeepSeek 验证单字段更正、多字段合并、信息删除，以及获批后的完整 Profile 文件更新。
 - 根据实际备份增长速度评估保留数量和清理策略，首版不自动删除备份。
 - 若全量替换仍频繁遗漏旧信息，改为结构化 Profile Schema 或 Patch Tool。
 - 请求前自动召回仍属于长期记忆 Roadmap 的后续事项。

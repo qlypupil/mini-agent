@@ -14,6 +14,12 @@ describe('webSearchTool', () => {
 			topic: 'general',
 			includeAnswer: true,
 		})
+		expect(tavilySearchOptions.description).toContain(
+			'only after a successful current_time ToolMessage from an earlier tool round',
+		)
+		expect(tavilySearchOptions.description).toContain(
+			'include the resolved YYYY-MM-DD date in the query',
+		)
 		expect(webSearchTool.permission_level).toBe('network')
 	})
 
