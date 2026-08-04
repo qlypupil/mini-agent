@@ -3,36 +3,33 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
+import { withPermissionLevel } from './index'
+import { authorizeRead } from './read'
 import {
-	classifyToolAuthorization,
 	createProjectPathBoundary,
 	type ProjectPathBoundary,
-} from './tool-authorization'
-import { withPermissionLevel, type ToolPermissionLevel } from './tool-permission'
+} from './util'
 
-function testTool(
-	permissionLevel: ToolPermissionLevel,
-	filePathArg?: string,
-) {
+function readTool(filePathArg?: string) {
 	return withPermissionLevel(
 		tool(() => 'ok', {
-			name: `test_${permissionLevel}_${filePathArg ?? 'no_path'}`,
-			description: 'Test tool.',
+			name: `test_read_${filePathArg ?? 'no_path'}`,
+			description: 'Test read tool.',
 			schema: z.object({ path: z.string().optional() }),
 		}),
-		permissionLevel,
+		'read',
 		filePathArg ? { filePathArg } : {},
 	)
 }
 
-describe('classifyToolAuthorization', () => {
+describe('authorizeRead', () => {
 	let projectRoot: string
 	let outsideRoot: string
 	let projectBoundary: ProjectPathBoundary
 
 	beforeEach(async () => {
-		projectRoot = await mkdtemp(join(process.cwd(), '.tool-authorization-'))
-		outsideRoot = await mkdtemp(join(tmpdir(), 'termclaw-tool-authorization-'))
+		projectRoot = await mkdtemp(join(process.cwd(), '.read-authorization-'))
+		outsideRoot = await mkdtemp(join(tmpdir(), 'termclaw-read-authorization-'))
 		projectBoundary = createProjectPathBoundary(projectRoot)
 	})
 
@@ -41,63 +38,52 @@ describe('classifyToolAuthorization', () => {
 		await rm(outsideRoot, { recursive: true, force: true })
 	})
 
-	it('asks for non-file permissions and allows read or write tools without a path', () => {
+	it('allows read tools without a model-controlled file path', () => {
+		expect(authorizeRead(readTool(), {}, projectBoundary)).toEqual({
+			action: 'allow',
+		})
 		expect(
-			classifyToolAuthorization(testTool('exec'), {}, projectBoundary),
-		).toEqual({ action: 'ask' })
-		expect(
-			classifyToolAuthorization(testTool('read'), {}, projectBoundary),
-		).toEqual({ action: 'allow' })
-		expect(
-			classifyToolAuthorization(
-				testTool('write', 'path'),
-				{},
-				projectBoundary,
-			),
+			authorizeRead(readTool('path'), {}, projectBoundary),
 		).toEqual({ action: 'allow' })
 	})
 
-	it('allows ordinary project files even when the project is under Documents', async () => {
+	it('allows ordinary project files under a dynamically protected directory', async () => {
 		const filePath = join(projectRoot, 'notes.txt')
 		await writeFile(filePath, 'notes')
 
 		expect(
-			classifyToolAuthorization(
-				testTool('read', 'path'),
-				{ path: filePath },
-				projectBoundary,
-			),
+			authorizeRead(readTool('path'), { path: filePath }, projectBoundary),
 		).toMatchObject({
 			action: 'allow',
 			inspection: { status: 'user_selection_required' },
 		})
 	})
 
-	it('denies invalid and statically protected paths before project exemptions', () => {
+	it('allows ordinary paths outside the project without confirmation', () => {
 		expect(
-			classifyToolAuthorization(
-				testTool('read', 'path'),
+			authorizeRead(
+				readTool('path'),
+				{ path: join(outsideRoot, 'notes.txt') },
+				projectBoundary,
+			),
+		).toMatchObject({ action: 'allow', inspection: { status: 'safe' } })
+	})
+
+	it('denies invalid, static, and dynamically protected paths', () => {
+		expect(
+			authorizeRead(
+				readTool('path'),
 				{ path: '/tmp/file\0.txt' },
 				projectBoundary,
 			),
 		).toMatchObject({ action: 'deny', reason: 'invalid_path' })
 		expect(
-			classifyToolAuthorization(
-				testTool('write', 'path'),
+			authorizeRead(
+				readTool('path'),
 				{ path: join(projectRoot, '.env') },
 				projectBoundary,
 			),
 		).toMatchObject({ action: 'deny', reason: 'protected_path' })
-	})
-
-	it('asks for an ordinary path outside the project and denies personal folders', () => {
-		expect(
-			classifyToolAuthorization(
-				testTool('read', 'path'),
-				{ path: join(outsideRoot, 'notes.txt') },
-				projectBoundary,
-			),
-		).toMatchObject({ action: 'ask' })
 
 		const siblingPersonalPath = join(
 			dirname(projectRoot),
@@ -105,15 +91,15 @@ describe('classifyToolAuthorization', () => {
 			'notes.txt',
 		)
 		expect(
-			classifyToolAuthorization(
-				testTool('read', 'path'),
+			authorizeRead(
+				readTool('path'),
 				{ path: siblingPersonalPath },
 				projectBoundary,
 			),
 		).toMatchObject({ action: 'deny', reason: 'protected_path' })
 	})
 
-	it('requires confirmation when a symlink crosses a safe project boundary', async () => {
+	it('allows symlinks that cross a safe project boundary', async () => {
 		const projectFile = join(projectRoot, 'project.txt')
 		const outsideFile = join(outsideRoot, 'outside.txt')
 		const projectLink = join(projectRoot, 'outside-link.txt')
@@ -125,12 +111,8 @@ describe('classifyToolAuthorization', () => {
 
 		for (const path of [projectLink, outsideLink]) {
 			expect(
-				classifyToolAuthorization(
-					testTool('read', 'path'),
-					{ path },
-					projectBoundary,
-				),
-			).toMatchObject({ action: 'ask' })
+				authorizeRead(readTool('path'), { path }, projectBoundary),
+			).toMatchObject({ action: 'allow' })
 		}
 	})
 })

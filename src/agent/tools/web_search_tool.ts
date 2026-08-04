@@ -1,6 +1,6 @@
 import '../env'
 import { TavilySearch } from '@langchain/tavily'
-import { withPermissionLevel } from '../permission/tool-permission'
+import { withPermissionLevel } from '../permission'
 
 // 直接注册 Tavily 原生工具，保持与 Moonshot 工具调用链的兼容性。
 export const tavilySearchOptions = {

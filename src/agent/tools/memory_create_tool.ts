@@ -2,7 +2,7 @@ import { tool, type ToolRunnableConfig } from '@langchain/core/tools'
 import { z } from 'zod'
 import { DB_PATH } from '../storage/db'
 import { createMemory } from '../storage/memory'
-import { withPermissionLevel } from '../permission/tool-permission'
+import { withPermissionLevel } from '../permission'
 
 export const memoryCreateSchema = z.object({
 	type: z.enum(['fact', 'event', 'preference', 'skill']),

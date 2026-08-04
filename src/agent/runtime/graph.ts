@@ -30,12 +30,12 @@ import { maybePersistToolMessages } from './tool_output'
 import { createCheckpointer } from '../storage/checkpointer'
 import {
 	type PermissionedTool,
+	type ToolAuthorization,
 	type ToolPermissionLevel,
-} from '../permission/tool-permission'
-import {
-	classifyToolAuthorization,
-	createProjectPathBoundary,
-} from '../permission/tool-authorization'
+} from '../permission'
+import { authorizeRead } from '../permission/read'
+import { createProjectPathBoundary } from '../permission/util'
+import { authorizeWrite } from '../permission/write'
 
 export type ContextApplyMode = 'once' | 'persist'
 
@@ -190,14 +190,17 @@ export function createChatGraph({
 					throw new Error(`Tool call for "${toolCall.name}" is missing an ID.`)
 				}
 
+				const authorization: ToolAuthorization =
+					registeredTool.permission_level === 'read'
+						? authorizeRead(registeredTool, toolCall.args, projectBoundary)
+						: registeredTool.permission_level === 'write'
+							? authorizeWrite(registeredTool, toolCall.args, projectBoundary)
+							: { action: 'ask' }
+
 				return {
 					toolCall,
 					registeredTool,
-					authorization: classifyToolAuthorization(
-						registeredTool,
-						toolCall.args,
-						projectBoundary,
-					),
+					authorization,
 				}
 			})
 			const blockedMessages = authorizations.flatMap(

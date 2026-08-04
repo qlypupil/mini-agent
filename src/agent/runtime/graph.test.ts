@@ -36,7 +36,7 @@ import { createProfileUpdateTool } from '../tools/profile_update_tool'
 import {
 	type PermissionedTool,
 	withPermissionLevel,
-} from '../permission/tool-permission'
+} from '../permission'
 import Database from 'better-sqlite3'
 
 function createTestGraph(
@@ -468,6 +468,44 @@ describe('custom chat graph', () => {
 		}
 	})
 
+	it('executes ordinary external read calls without confirmation', async () => {
+		const outsideRoot = mkdtempSync(join(tmpdir(), 'termclaw-graph-read-path-'))
+		const filePath = join(outsideRoot, 'notes.txt')
+		writeFileSync(filePath, 'notes', 'utf8')
+		const execute = jest.fn(() => 'notes')
+		const readExternalFile = withPermissionLevel(tool(execute, {
+			name: 'read_external_file',
+			description: 'Read an external file.',
+			schema: z.object({ path: z.string() }),
+		}), 'read', { filePathArg: 'path' })
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-external-read', name: 'read_external_file', args: { path: filePath } },
+			])
+			.respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(model, [readExternalFile])
+
+		try {
+			const result = await graph.invoke(
+				{ messages: [new HumanMessage('read it')] },
+				{
+					configurable: { thread_id: 'external-read-thread' },
+					context: {
+						model: undefined,
+						contextControl: undefined,
+						contextCompression: undefined,
+					},
+				},
+			)
+
+			expect(isInterrupted(result)).toBe(false)
+			expect(execute).toHaveBeenCalledTimes(1)
+		} finally {
+			checkpointer.db.close()
+			rmSync(outsideRoot, { recursive: true, force: true })
+		}
+	})
+
 	it('blocks a protected file path without asking for confirmation', async () => {
 		const projectRoot = mkdtempSync(join(process.cwd(), '.graph-protected-path-'))
 		const execute = jest.fn(() => 'should not run')
@@ -523,7 +561,7 @@ describe('custom chat graph', () => {
 		}
 	})
 
-	it('asks only for external safe paths when authorization actions are mixed', async () => {
+	it('asks only for external safe writes when authorization actions are mixed', async () => {
 		const projectRoot = mkdtempSync(join(process.cwd(), '.graph-mixed-paths-'))
 		const outsideRoot = mkdtempSync(join(tmpdir(), 'termclaw-graph-mixed-paths-'))
 		const executeAllowed = jest.fn(() => 'allowed')
@@ -540,10 +578,10 @@ describe('custom chat graph', () => {
 			schema: z.object({ path: z.string() }),
 		}), 'write', { filePathArg: 'path' })
 		const externalTool = withPermissionLevel(tool(executeExternal, {
-			name: 'external_read',
-			description: 'Read an external file.',
+			name: 'external_write',
+			description: 'Write an external file.',
 			schema: z.object({ path: z.string() }),
-		}), 'read', { filePathArg: 'path' })
+		}), 'write', { filePathArg: 'path' })
 		const model = fakeModel()
 			.respondWithTools([
 				{ id: 'call-allowed', name: 'allowed_read', args: {} },
@@ -554,7 +592,7 @@ describe('custom chat graph', () => {
 				},
 				{
 					id: 'call-external',
-					name: 'external_read',
+					name: 'external_write',
 					args: { path: join(outsideRoot, 'notes.txt') },
 				},
 			])
@@ -588,8 +626,8 @@ describe('custom chat graph', () => {
 			expect(interrupted.__interrupt__[0]?.value?.requests).toEqual([
 				expect.objectContaining({
 					id: 'call-external',
-					name: 'external_read',
-					permissionLevel: 'read',
+					name: 'external_write',
+					permissionLevel: 'write',
 				}),
 			])
 

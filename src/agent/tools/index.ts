@@ -14,7 +14,7 @@ import { runPyTool } from './run_py_tool'
 import {
 	type PermissionedTool,
 	withPermissionLevel,
-} from '../permission/tool-permission'
+} from '../permission'
 import { webFetchTool } from './web_fetch_tool'
 import { webSearchTool } from './web_search_tool'
 import { writeFileTool } from './write_file_tool'

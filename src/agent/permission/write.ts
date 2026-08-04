@@ -1,58 +1,15 @@
-import { realpathSync } from 'node:fs'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import type { PermissionedTool, ToolAuthorization } from './index'
+import { inspectDangerousPath } from './is-dangerous-path'
 import {
-	inspectDangerousPath,
-	type DangerousPathInspection,
-} from './is-dangerous-path'
-import type { PermissionedTool } from './tool-permission'
+	isInProjectDir,
+	type ProjectPathBoundary,
+} from './util'
 
-export type ToolAuthorizationAction = 'allow' | 'ask' | 'deny'
-
-export interface ProjectPathBoundary {
-	requestedRoot: string
-	resolvedRoot: string
-}
-
-export interface ToolAuthorization {
-	action: ToolAuthorizationAction
-	reason?: 'invalid_path' | 'protected_path'
-	inspection?: DangerousPathInspection
-}
-
-export function createProjectPathBoundary(
-	projectRoot = process.cwd(),
-): ProjectPathBoundary {
-	const requestedRoot = resolve(projectRoot)
-
-	return {
-		requestedRoot,
-		resolvedRoot: realpathSync.native(requestedRoot),
-	}
-}
-
-function isWithinRoot(root: string, filePath: string): boolean {
-	const relativePath = relative(root, filePath)
-
-	return (
-		relativePath === '' ||
-		(!relativePath.startsWith(`..${sep}`) &&
-			relativePath !== '..' &&
-			!isAbsolute(relativePath))
-	)
-}
-
-export function classifyToolAuthorization(
+export function authorizeWrite(
 	registeredTool: PermissionedTool,
 	args: Record<string, unknown>,
 	projectBoundary: ProjectPathBoundary,
 ): ToolAuthorization {
-	if (
-		registeredTool.permission_level !== 'read' &&
-		registeredTool.permission_level !== 'write'
-	) {
-		return { action: 'ask' }
-	}
-
 	const filePathArg = registeredTool.file_path_arg
 	if (!filePathArg || typeof args[filePathArg] !== 'string') {
 		return { action: 'allow' }
@@ -72,13 +29,13 @@ export function classifyToolAuthorization(
 		return { action: 'deny', reason: 'invalid_path', inspection }
 	}
 
-	const requestedInsideProject = isWithinRoot(
-		projectBoundary.requestedRoot,
+	const requestedInsideProject = isInProjectDir(
 		requestedPath,
+		projectBoundary.requestedRoot,
 	)
-	const resolvedInsideProject = isWithinRoot(
-		projectBoundary.resolvedRoot,
+	const resolvedInsideProject = isInProjectDir(
 		resolvedPath,
+		projectBoundary.resolvedRoot,
 	)
 	if (requestedInsideProject && resolvedInsideProject) {
 		return { action: 'allow', inspection }

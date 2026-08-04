@@ -1104,9 +1104,11 @@ src/agent/
     sessions.ts               # SQLite 会话查询与终端表格
   permission/
     dangerous-path.json       # macOS、Windows、Linux 危险读取路径数据
+    index.ts                   # Tool 权限等级、元数据类型与挂载辅助函数
     is-dangerous-path.ts      # 路径展开、真实路径解析与危险规则分级
-    tool-permission.ts        # Tool 权限等级、元数据类型与挂载辅助函数
-    tool-authorization.ts     # Read／Write 项目边界与 Tool 授权动作分类
+    read.ts                    # Read Tool 路径授权策略
+    util.ts                    # 项目边界解析与目录归属判断
+    write.ts                   # Write Tool 路径授权策略
   skills/                     # Skills 注册、提示词与内置资源
   tools/                      # Tools 注册、实现与安全边界测试
 scripts/

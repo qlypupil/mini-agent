@@ -88,12 +88,12 @@
 - 新增 `profile_update` Tool：模型将新变化与 `<profile_info>` 中仍有效的信息合并为完整 Markdown，Tool 在覆盖 `.data/profile.md` 前保留唯一历史备份，并通过临时文件原子替换主文件。
 - `profile_update` 固定写入当前工作目录，拒绝模型指定路径、空内容、外层标签、目录及符号链接目标；Tool description 不暴露路径和备份实现。
 - System Prompt 要求模型对每条新用户消息独立判断当前任务、Profile 更新和 Memory 创建；业务 Tool 不能替代持久化判断，同一消息可提出多个调用，并禁止从查询参数推断画像或补充用户未陈述的派生信息。
-- 为全部 13 个已注册 Tool 增加 `read`、`write`、`exec`、`network` 或 `db` 权限属性；权限等级、Tool 元数据类型和挂载辅助函数统一归入 `src/agent/permission/tool-permission.ts`，注册表编译期约束可防止后续新增 Tool 时漏配权限。
+- 为全部 13 个已注册 Tool 增加 `read`、`write`、`exec`、`network` 或 `db` 权限属性；权限等级、Tool 元数据类型和挂载辅助函数统一归入 `src/agent/permission/index.ts`，注册表编译期约束可防止后续新增 Tool 时漏配权限。
 - 新增 `src/agent/permission/dangerous-path.json` 跨平台危险读取路径基线，按公共、macOS、Windows、Linux 分类收录凭据、密钥、浏览器会话、通信数据、系统认证、进程内存、备份及个人目录规则，并规定路径标准化、真实路径解析和用户明确选择边界；规则已接入文件 Tool 运行时授权与打开前复检。
 - `isDangerousPath` 保留布尔兼容接口，并新增 `inspectDangerousPath` 详细结果：区分静态禁止、动态用户选择目录、安全路径和无效路径，返回规范化请求路径、真实路径及命中规则 ID；继续支持绝对路径、相对路径、`~`、POSIX 与 Windows 环境变量、Windows 特殊路径及 symlink／junction 真实目标检查。
 - `read_file`、`write_file` 支持绝对路径、`../` 相对路径、环境变量表达式和跨目录符号链接，可访问当前进程有权限操作的任意普通文件；实际打开前使用与授权层一致的路径展开和危险规则复检，并继续独立拒绝 `.env*`、`.git` 和非普通文件。
 - `exec` 输入收敛为完整 `command` 字符串并通过 shell 执行，支持原白名单外命令、管道、重定向和状态修改；移除命令及路径限制，保留 5 秒超时、64 KB 输出上限和非零退出错误。
-- LangGraph human-in-the-loop 改为条件授权：`read`／`write` Tool 通过显式 `file_path_arg` 元数据取得模型文件参数；无文件参数和项目内普通路径自动执行，静态高危路径、无效路径及项目外动态个人目录直接阻止，项目外普通路径才进入确认；`exec`、`network`、`db` 保持逐项确认，同轮只向用户展示 `ask` 子集。
+- LangGraph human-in-the-loop 改为条件授权：公共权限定义位于 `permission/index.ts`，Read、Write 与项目目录判断分别由 `read.ts`、`write.ts`、`util.ts` 负责；无文件参数和项目内普通路径自动执行，静态高危路径、无效路径及项目外动态个人目录直接阻止，项目外安全读取直接执行，只有项目外安全写入进入确认；`exec`、`network`、`db` 保持逐项确认。
 
 ## 进行中
 
@@ -117,6 +117,7 @@
 - `isDangerousPath` 已通过 macOS、Windows、Linux 36 条定向回归，包括真实 symlink／junction 目标复检和解析异常默认拒绝；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与构建产物直接加载验证通过（35 个测试套件、250 条测试），发布目录包含危险路径 JSON。
 - Read／Write 路径条件授权回归通过：覆盖无路径自动执行、`Documents` 内项目豁免、静态规则优先阻止、项目边界 symlink、项目外普通路径确认、动态个人目录阻止及同轮 `allow`／`deny`／`ask` 混合映射；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（36 个测试套件、266 条测试）。
 - Tool 权限元数据从 `tools` 迁移至 `permission` 后，Tool 工厂、Graph 与授权分类器形成单向权限依赖；`pnpm typecheck`、权限相关 31 条定向测试、全量 266 条测试、`pnpm build` 与 `git diff --check` 通过。
+- Read／Write 授权策略完成模块拆分，`isInProjectDir` 独立归入路径工具模块；专项测试确认项目外安全读取不再触发确认、项目外安全写入仍请求确认，敏感及无效路径继续阻止。`pnpm typecheck`、39 条权限与 Graph 定向测试、274 条全量测试、`pnpm build` 与 `git diff --check` 通过。
 - `pnpm typecheck`、`pnpm build` 与 `pnpm start` 通过。
 - 构建产物已完成 Moonshot 集成测试：`hi` 与 `who are you` 均收到正常流式回复。
 - `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过。

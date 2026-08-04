@@ -1,4 +1,5 @@
 import type { StructuredToolInterface } from '@langchain/core/tools'
+import type { DangerousPathInspection } from './is-dangerous-path'
 
 export type ToolPermissionLevel =
 	| 'read'
@@ -16,6 +17,14 @@ export type PermissionedTool<
 
 export interface ToolPermissionOptions {
 	filePathArg?: string
+}
+
+export type ToolAuthorizationAction = 'allow' | 'ask' | 'deny'
+
+export interface ToolAuthorization {
+	action: ToolAuthorizationAction
+	reason?: 'invalid_path' | 'protected_path'
+	inspection?: DangerousPathInspection
 }
 
 export function withPermissionLevel<T extends StructuredToolInterface>(

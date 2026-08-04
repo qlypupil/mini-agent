@@ -3,7 +3,7 @@ import { createMemoryDeleteTool } from './memory_delete_tool'
 import { createMemoryRetrieveTool } from './memory_retrieve_tool'
 import { createProfileUpdateTool } from './profile_update_tool'
 import { tools } from './index'
-import type { ToolPermissionLevel } from '../permission/tool-permission'
+import type { ToolPermissionLevel } from '../permission'
 
 const expectedPermissions = {
 	read_file: 'read',

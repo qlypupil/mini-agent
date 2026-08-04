@@ -17,7 +17,7 @@
 - 没有外部文件目标的 `read`／`write` Tool 自动执行。
 - 项目内普通文件自动执行。
 - 静态高危路径和无效路径直接阻止，不能通过用户确认放行。
-- 项目外普通路径继续使用现有 human-in-the-loop 确认。
+- 项目外普通读取直接执行，项目外普通写入继续使用 human-in-the-loop 确认。
 - `exec`、`network`、`db` 权限保持逐次确认。
 
 ## 二、文件参数元数据
@@ -32,7 +32,7 @@ write_file -> args.path
 不能通过扫描任意 `args.path` 猜测文件语义，否则未来 Tool 的同名业务字段可能被误判；也不能只凭 `read`／`write` 推断，因为 `current_time`、`load_skill` 和 `profile_update` 没有模型可控文件路径。
 
 权限等级、Tool 权限元数据及挂载辅助函数统一归属
-`src/agent/permission/tool-permission.ts`。`PermissionedTool` 增加可选的文件参数元数据：
+`src/agent/permission/index.ts`。`PermissionedTool` 增加可选的文件参数元数据：
 
 ```ts
 interface ToolFilePathMetadata {
@@ -96,26 +96,46 @@ interface DangerousPathInspection {
 这意味着：
 
 - `./src/index.ts`：直接执行。
-- 项目内 symlink 指向 `/tmp/file.txt`：不能按项目内路径自动放行。
-- 项目外 symlink 指向项目内：仍按项目外路径确认，避免仅凭真实目标扩大自动授权边界。
+- 项目内 symlink 指向 `/tmp/file.txt`：不能按纯项目内路径处理；Read 在外部目标安全时直接执行，Write 请求确认。
+- 项目外 symlink 指向项目内：同样按跨边界路径处理，Read 直接执行，Write 请求确认。
 - 项目内 `.env`、私钥、云凭据：静态规则优先，直接阻止。
 - 项目位于 `Documents`：动态规则被项目可信根豁免，普通源码仍可自动执行。
 
 路径是否位于项目内不能使用字符串前缀，例如 `/project-other` 不能被 `/project` 误判。实现使用目标平台的 `relative()`，只有结果为空或既不以 `..` 开头、也不是绝对路径时才属于根目录。
 
-## 五、统一决策矩阵
+## 五、按权限拆分决策
 
-授权节点为每个 ToolCall 生成内部动作：
+公共权限类型和元数据保存在 `permission/index.ts`，路径授权按行为拆分：
+
+```text
+permission/
+  index.ts   # 公共权限类型与 withPermissionLevel
+  read.ts    # authorizeRead
+  write.ts   # authorizeWrite
+  util.ts    # 项目边界与 isInProjectDir
+```
+
+两套策略返回统一动作：
 
 ```ts
 type ToolAuthorizationAction = 'allow' | 'deny' | 'ask'
 ```
 
-决策顺序：
+Read 决策顺序：
 
 | 条件 | 动作 |
 | --- | --- |
-| 权限不是 `read`／`write` | `ask` |
+| Tool 未声明文件参数，或本次未取得字符串路径 | `allow` |
+| 路径检查为 `invalid` | `deny` |
+| 命中静态规则 `deny` | `deny` |
+| 请求路径和真实路径都在项目内 | `allow` |
+| 项目外命中 `user_selection_required` | `deny` |
+| 项目外且路径为 `safe` | `allow` |
+
+Write 决策顺序：
+
+| 条件 | 动作 |
+| --- | --- |
 | Tool 未声明文件参数，或本次未取得字符串路径 | `allow` |
 | 路径检查为 `invalid` | `deny` |
 | 命中静态规则 `deny` | `deny` |
@@ -123,11 +143,13 @@ type ToolAuthorizationAction = 'allow' | 'deny' | 'ask'
 | 项目外命中 `user_selection_required` | `deny` |
 | 项目外且路径为 `safe` | `ask` |
 
-项目内判断位于静态阻止之后、动态阻止之前，解决项目位于 `Documents` 与项目敏感文件仍需保护的冲突。
+`exec`、`network` 和 `db` 不进入文件策略，保持 `ask`。
+
+两套策略都在静态阻止之后、动态阻止之前判断项目目录，解决项目位于 `Documents` 与项目敏感文件仍需保护的冲突。跨项目边界的 symlink／junction 会单独检查外部一侧：外部路径安全时按对应权限的项目外规则处理，否则阻止。
 
 ## 六、LangGraph 流程
 
-`authorize_tools` 不再对全部 ToolCall 创建确认请求，而是先分类：
+`authorize_tools` 根据 `permission_level` 调用 `authorizeRead()` 或 `authorizeWrite()`；其他权限直接分类为 `ask`：
 
 ```text
 model_request
@@ -181,8 +203,8 @@ Tool 内原有 `.env*`、`.git` 和普通文件类型校验继续保留，作为
 2. `read_file`、`write_file` 的项目内普通路径自动执行。
 3. 项目位于 `Documents` 时，普通项目文件仍自动执行。
 4. 项目内 `.env`、SSH 私钥、PEM 等静态高危路径被阻止。
-5. 项目内 symlink／junction 指向项目外时不能自动执行。
-6. 项目外普通路径触发确认，批准后执行、拒绝后不执行。
+5. Read 访问项目内外普通路径及跨安全边界 symlink／junction 时自动执行。
+6. Write 访问项目外普通路径或跨安全边界 symlink／junction 时触发确认，批准后执行、拒绝后不执行。
 7. 项目外个人目录、系统凭据、浏览器会话等危险路径直接阻止且不询问。
 8. `exec`、`network`、`db` 仍触发确认。
 9. 同一轮 `allow`、`deny`、`ask` 混合时，只询问 `ask` 集合且 ToolMessage 完整配对。
@@ -192,6 +214,6 @@ Tool 内原有 `.env*`、`.git` 和普通文件类型校验继续保留，作为
 ## 十、当前边界
 
 - 本阶段只处理单个文件路径参数，不支持复制、移动等多路径 Tool；后续应将元数据扩展为路径提取函数或路径数组。
-- 用户确认只能放行项目外普通路径，不能覆盖静态危险路径和动态受保护目录。
+- 用户确认只用于放行项目外普通写入，不能覆盖静态危险路径和动态受保护目录；普通读取不再触发确认。
 - `exec` 仍需用户逐次确认，但确认无法限制命令间接访问哪些文件；完整隔离仍依赖后续进程级文件系统沙箱。
 - 路径策略只控制 Agent Tool 调用，不改变操作系统 ACL、Full Disk Access、管理员或 root 权限。
