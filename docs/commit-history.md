@@ -1095,6 +1095,22 @@ START -> apply_context -> model_request -> END
 
 **验证**：首次实现通过 36 个测试套件、266 条测试；后续拆分通过 39 条权限与 Graph 定向测试及 274 条全量测试。两个阶段的 `pnpm typecheck`、`pnpm build` 与 `git diff --check` 均通过。
 
+## 44. [`95f439f` `feat: 增加 Exec 静态命令授权策略`](https://github.com/qlypupil/mini-agent/commit/95f439f71f30eb02955038870e1c798379e87074)
+
+**详细说明**：[44 Exec 静态命令权限](./commits/44-exec-directory-change-permission.md)
+
+**目标**：在 `exec` 执行前区分必须阻止、可自动执行和需要用户确认的 shell 命令，减少明确只读操作的重复确认，同时阻止可静态识别的高风险行为。
+
+**主要改动**：
+
+- 新增独立 `permission/exec.ts`，按目录切换、非 Shell 语言入口和八类跨平台危险操作的优先级返回分类拒绝原因。
+- 使用轻量词法扫描检查命令位置、复合命令片段、上下文子命令、输出重定向、敏感路径和 Shell 内联命令，不增加 shell 解析依赖。
+- 为 `ls`、`pwd`、`cat`、`head`、`tail`、`grep`、`find`、`git status/diff/log`、`echo`、`date`、`whoami` 及 Windows 等价命令增加严格正向安全集合；只有整条命令和参数均可静态证明安全时自动执行。
+- 动态 shell 语法、未知命令、不透明脚本及扩大读取边界的参数继续请求确认；危险操作即使可由安全命令入口表达也优先阻止。
+- Graph 根据拒绝原因生成配对错误 `ToolMessage`，安全 Exec 不产生 interrupt 并直接执行，其他 Exec 继续使用 human-in-the-loop 确认。
+
+**验证**：权限与 Graph 定向测试共 236 条，全量测试共 39 个测试套件、487 条测试；`pnpm typecheck`、`pnpm build` 与 `git diff --check` 通过。
+
 ## 当前结构
 
 ```text
@@ -1122,7 +1138,7 @@ src/agent/
     sessions.ts               # SQLite 会话查询与终端表格
   permission/
     dangerous-path.json       # macOS、Windows、Linux 危险读取路径数据
-    exec.ts                   # Exec Tool 目录、语言与危险操作授权策略
+    exec.ts                   # Exec Tool 目录、语言、危险操作与安全命令授权策略
     index.ts                   # Tool 权限等级、元数据类型与挂载辅助函数
     is-dangerous-path.ts      # 路径展开、真实路径解析与危险规则分级
     read.ts                    # Read Tool 路径授权策略

@@ -2,7 +2,7 @@
 
 ## Commit 信息
 
-- Commit：待提交
+- Commit：[`95f439f`](https://github.com/qlypupil/mini-agent/commit/95f439f71f30eb02955038870e1c798379e87074)
 - 类型：`feat`
 - 状态：当前实现
 - 基线：`52d011f feat: 拆分读写权限策略`

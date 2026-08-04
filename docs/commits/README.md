@@ -57,6 +57,7 @@
 | 41 | `a51ff60` | 增加 Tool 调用 Human-in-the-loop 确认 | [41](./41-tool-human-in-the-loop.md) |
 | 42 | `ae2e00e` | 增加跨平台危险路径基线与匹配器 | [42](./42-dangerous-path-matcher.md) |
 | 43 | `27d87f6` | 增加文件 Tool 路径分级授权 | [43](./43-read-write-path-authorization.md) |
+| 44 | `95f439f` | 增加 Exec 静态命令授权策略 | [44](./44-exec-directory-change-permission.md) |
 
 ## 核对方式
 
