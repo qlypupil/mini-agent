@@ -36,12 +36,13 @@ import { createProfileUpdateTool } from '../tools/profile_update_tool'
 import {
 	type PermissionedTool,
 	withPermissionLevel,
-} from '../tools/tool_permission'
+} from '../permission/tool-permission'
 import Database from 'better-sqlite3'
 
 function createTestGraph(
 	model = fakeModel(),
 	testTools: StructuredToolInterface[] = [],
+	projectRoot = process.cwd(),
 ) {
 	const databasePath = join(
 		mkdtempSync(join(tmpdir(), 'termclaw-chat-graph-')),
@@ -51,13 +52,14 @@ function createTestGraph(
 	const permissionedTools = testTools.map((testTool) =>
 		'permission_level' in testTool
 			? testTool as PermissionedTool
-			: withPermissionLevel(testTool, 'read'),
+			: withPermissionLevel(testTool, 'exec'),
 	)
 	const graph = createChatGraph({
 		model,
 		tools: permissionedTools,
 		systemPrompt: 'system prompt',
 		checkpointer,
+		projectRoot,
 	})
 
 	return { graph, checkpointer }
@@ -390,6 +392,236 @@ describe('custom chat graph', () => {
 			})
 		}
 		checkpointer.db.close()
+	})
+
+	it('executes read or write tools without a file path without confirmation', async () => {
+		const execute = jest.fn(() => 'current value')
+		const readWithoutPath = withPermissionLevel(tool(execute, {
+			name: 'read_without_path',
+			description: 'Read a value without a file path.',
+			schema: z.object({}),
+		}), 'read')
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-read', name: 'read_without_path', args: {} },
+			])
+			.respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(model, [readWithoutPath])
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('read it')] },
+			{
+				configurable: { thread_id: 'read-without-path-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(isInterrupted(result)).toBe(false)
+		expect(execute).toHaveBeenCalledTimes(1)
+		expect(result.messages.at(-1)?.content).toBe('done')
+		checkpointer.db.close()
+	})
+
+	it('executes ordinary project file calls without confirmation', async () => {
+		const projectRoot = mkdtempSync(join(process.cwd(), '.graph-path-project-'))
+		const filePath = join(projectRoot, 'notes.txt')
+		writeFileSync(filePath, 'notes', 'utf8')
+		const execute = jest.fn(() => 'notes')
+		const readProjectFile = withPermissionLevel(tool(execute, {
+			name: 'read_project_file',
+			description: 'Read a project file.',
+			schema: z.object({ path: z.string() }),
+		}), 'read', { filePathArg: 'path' })
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-project', name: 'read_project_file', args: { path: filePath } },
+			])
+			.respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(
+			model,
+			[readProjectFile],
+			projectRoot,
+		)
+
+		try {
+			const result = await graph.invoke(
+				{ messages: [new HumanMessage('read it')] },
+				{
+					configurable: { thread_id: 'project-file-thread' },
+					context: {
+						model: undefined,
+						contextControl: undefined,
+						contextCompression: undefined,
+					},
+				},
+			)
+
+			expect(isInterrupted(result)).toBe(false)
+			expect(execute).toHaveBeenCalledTimes(1)
+		} finally {
+			checkpointer.db.close()
+			rmSync(projectRoot, { recursive: true, force: true })
+		}
+	})
+
+	it('blocks a protected file path without asking for confirmation', async () => {
+		const projectRoot = mkdtempSync(join(process.cwd(), '.graph-protected-path-'))
+		const execute = jest.fn(() => 'should not run')
+		const writeProtectedFile = withPermissionLevel(tool(execute, {
+			name: 'write_protected_file',
+			description: 'Write a protected file.',
+			schema: z.object({ path: z.string() }),
+		}), 'write', { filePathArg: 'path' })
+		const log = jest.spyOn(console, 'log').mockImplementation()
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'call-protected',
+					name: 'write_protected_file',
+					args: { path: join(projectRoot, '.env') },
+				},
+			])
+			.respond(new AIMessage('blocked'))
+		const { graph, checkpointer } = createTestGraph(
+			model,
+			[writeProtectedFile],
+			projectRoot,
+		)
+
+		try {
+			const result = await graph.invoke(
+				{ messages: [new HumanMessage('write it')] },
+				{
+					configurable: { thread_id: 'protected-file-thread' },
+					context: {
+						model: undefined,
+						contextControl: undefined,
+						contextCompression: undefined,
+					},
+				},
+			)
+
+			expect(isInterrupted(result)).toBe(false)
+			expect(execute).not.toHaveBeenCalled()
+			expect(log).not.toHaveBeenCalledWith('[Tool] write_protected_file')
+			expect(model.calls[1].messages).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						tool_call_id: 'call-protected',
+						status: 'error',
+						content: expect.stringContaining('protected'),
+					}),
+				]),
+			)
+		} finally {
+			checkpointer.db.close()
+			rmSync(projectRoot, { recursive: true, force: true })
+		}
+	})
+
+	it('asks only for external safe paths when authorization actions are mixed', async () => {
+		const projectRoot = mkdtempSync(join(process.cwd(), '.graph-mixed-paths-'))
+		const outsideRoot = mkdtempSync(join(tmpdir(), 'termclaw-graph-mixed-paths-'))
+		const executeAllowed = jest.fn(() => 'allowed')
+		const executeBlocked = jest.fn(() => 'blocked')
+		const executeExternal = jest.fn(() => 'external')
+		const allowedTool = withPermissionLevel(tool(executeAllowed, {
+			name: 'allowed_read',
+			description: 'Read without a file path.',
+			schema: z.object({}),
+		}), 'read')
+		const blockedTool = withPermissionLevel(tool(executeBlocked, {
+			name: 'blocked_write',
+			description: 'Write a protected file.',
+			schema: z.object({ path: z.string() }),
+		}), 'write', { filePathArg: 'path' })
+		const externalTool = withPermissionLevel(tool(executeExternal, {
+			name: 'external_read',
+			description: 'Read an external file.',
+			schema: z.object({ path: z.string() }),
+		}), 'read', { filePathArg: 'path' })
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-allowed', name: 'allowed_read', args: {} },
+				{
+					id: 'call-blocked',
+					name: 'blocked_write',
+					args: { path: join(projectRoot, '.env') },
+				},
+				{
+					id: 'call-external',
+					name: 'external_read',
+					args: { path: join(outsideRoot, 'notes.txt') },
+				},
+			])
+			.respond(new AIMessage('handled'))
+		const { graph, checkpointer } = createTestGraph(
+			model,
+			[allowedTool, blockedTool, externalTool],
+			projectRoot,
+		)
+		const config = {
+			configurable: { thread_id: 'mixed-path-authorization-thread' },
+			context: {
+				model: undefined,
+				contextControl: undefined,
+				contextCompression: undefined,
+			},
+		}
+
+		try {
+			const interrupted = await graph.invoke(
+				{ messages: [new HumanMessage('use all tools')] },
+				config,
+			)
+			expect(executeAllowed).not.toHaveBeenCalled()
+			expect(executeBlocked).not.toHaveBeenCalled()
+			expect(executeExternal).not.toHaveBeenCalled()
+			expect(isInterrupted<ToolApprovalInterrupt>(interrupted)).toBe(true)
+			if (!isInterrupted<ToolApprovalInterrupt>(interrupted)) {
+				throw new Error('Expected a tool approval interrupt.')
+			}
+			expect(interrupted.__interrupt__[0]?.value?.requests).toEqual([
+				expect.objectContaining({
+					id: 'call-external',
+					name: 'external_read',
+					permissionLevel: 'read',
+				}),
+			])
+
+			await graph.invoke(
+				new Command<ToolApprovalResume>({
+					resume: { decisions: [{ type: 'approve' }] },
+				}) as any,
+				config,
+			)
+
+			expect(executeAllowed).toHaveBeenCalledTimes(1)
+			expect(executeBlocked).not.toHaveBeenCalled()
+			expect(executeExternal).toHaveBeenCalledTimes(1)
+			const toolMessages = model.calls[1].messages.filter((message) =>
+				ToolMessage.isInstance(message),
+			) as ToolMessage[]
+			expect(toolMessages).toHaveLength(3)
+			expect(toolMessages).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ tool_call_id: 'call-allowed' }),
+					expect.objectContaining({
+						tool_call_id: 'call-blocked',
+						status: 'error',
+					}),
+					expect.objectContaining({ tool_call_id: 'call-external' }),
+				]),
+			)
+		} finally {
+			checkpointer.db.close()
+			rmSync(projectRoot, { recursive: true, force: true })
+			rmSync(outsideRoot, { recursive: true, force: true })
+		}
 	})
 
 	it('returns a rejected tool call to the model without executing it', async () => {

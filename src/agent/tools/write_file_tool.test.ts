@@ -60,6 +60,29 @@ describe('writeFileTool', () => {
 		await expect(readFile(outsideFile, 'utf8')).resolves.toBe('relative content')
 	})
 
+	it('expands environment-variable path expressions before writing', async () => {
+		const variableName = 'TERMCLAW_WRITE_FILE_ROOT'
+		const previousValue = process.env[variableName]
+		process.env[variableName] = insideDirectory
+
+		try {
+			await expect(
+				writeFileTool(`%${variableName}%/environment.txt`, 'environment content'),
+			).resolves.toBe(
+				`Wrote file: %${variableName}%/environment.txt`,
+			)
+			await expect(
+				readFile(join(insideDirectory, 'environment.txt'), 'utf8'),
+			).resolves.toBe('environment content')
+		} finally {
+			if (previousValue === undefined) {
+				delete process.env[variableName]
+			} else {
+				process.env[variableName] = previousValue
+			}
+		}
+	})
+
 	it('rejects sensitive environment files', async () => {
 		await expect(writeFileTool('.env.local', 'content')).rejects.toThrow(
 			'Sensitive files cannot be written.',

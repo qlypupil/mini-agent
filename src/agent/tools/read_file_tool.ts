@@ -1,5 +1,6 @@
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
+import { inspectDangerousPath } from '../permission/is-dangerous-path'
 
 function assertSafePath(filePath: string): void {
 	const segments = resolve(filePath).split(sep)
@@ -11,12 +12,28 @@ function assertSafePath(filePath: string): void {
 }
 
 export async function readFileTool(filePath: string): Promise<string> {
-	// 相对路径以当前目录为基准；绝对路径和当前目录外的目标均允许访问。
-	const requestedPath = resolve(filePath)
+	const inspection = inspectDangerousPath(filePath)
+	if (
+		inspection.status === 'invalid' ||
+		inspection.status === 'deny' ||
+		!inspection.requestedPath ||
+		!inspection.resolvedPath
+	) {
+		throw new Error('Sensitive files cannot be read.')
+	}
+
+	const requestedPath = inspection.requestedPath
 	assertSafePath(requestedPath)
 
 	// 解析符号链接后再次检查，避免安全名称的链接指向敏感文件。
 	const resolvedPath = await realpath(requestedPath)
+	const resolvedInspection = inspectDangerousPath(resolvedPath)
+	if (
+		resolvedInspection.status === 'invalid' ||
+		resolvedInspection.status === 'deny'
+	) {
+		throw new Error('Sensitive files cannot be read.')
+	}
 	assertSafePath(resolvedPath)
 
 	if (!(await stat(resolvedPath)).isFile()) {

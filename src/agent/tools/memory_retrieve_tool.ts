@@ -2,7 +2,7 @@ import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
 import { DB_PATH } from '../storage/db'
 import { retrieveMemories } from '../storage/memory'
-import { withPermissionLevel } from './tool_permission'
+import { withPermissionLevel } from '../permission/tool-permission'
 
 export const memoryRetrieveSchema = z.object({
 	keywords: z

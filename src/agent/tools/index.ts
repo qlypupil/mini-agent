@@ -14,7 +14,7 @@ import { runPyTool } from './run_py_tool'
 import {
 	type PermissionedTool,
 	withPermissionLevel,
-} from './tool_permission'
+} from '../permission/tool-permission'
 import { webFetchTool } from './web_fetch_tool'
 import { webSearchTool } from './web_search_tool'
 import { writeFileTool } from './write_file_tool'
@@ -133,8 +133,8 @@ const skillTools = skillNames.length
 
 // Agent 统一从此注册表加载工具；新增工具时在这里声明元信息并加入数组。
 export const tools = [
-	withPermissionLevel(readFile, 'read'),
-	withPermissionLevel(writeFile, 'write'),
+	withPermissionLevel(readFile, 'read', { filePathArg: 'path' }),
+	withPermissionLevel(writeFile, 'write', { filePathArg: 'path' }),
 	withPermissionLevel(exec, 'exec'),
 	withPermissionLevel(runJs, 'exec'),
 	withPermissionLevel(runPy, 'exec'),

@@ -1090,7 +1090,7 @@ src/agent/
     context_commands.ts       # /context 暂存、预览与应用状态
     select_menu.ts            # TTY 方向键交互菜单
   runtime/
-    graph.ts                  # StateGraph、模型请求、工具循环与调用日志
+    graph.ts                  # StateGraph、模型请求、条件授权、工具循环与调用日志
     context.ts                # 自动摘要、压缩投影、消息硬裁剪与历史 ToolMessage 简化
     context_patch.ts          # 手动消息选择、校验与 Context 变换
     context_usage.ts          # Context token 用量与告警
@@ -1104,7 +1104,9 @@ src/agent/
     sessions.ts               # SQLite 会话查询与终端表格
   permission/
     dangerous-path.json       # macOS、Windows、Linux 危险读取路径数据
-    is-dangerous-path.ts      # 路径展开、平台规范化与危险规则匹配
+    is-dangerous-path.ts      # 路径展开、真实路径解析与危险规则分级
+    tool-permission.ts        # Tool 权限等级、元数据类型与挂载辅助函数
+    tool-authorization.ts     # Read／Write 项目边界与 Tool 授权动作分类
   skills/                     # Skills 注册、提示词与内置资源
   tools/                      # Tools 注册、实现与安全边界测试
 scripts/
@@ -1127,5 +1129,5 @@ tsconfig.build.json          # 仅编译运行时源码的构建配置
 - Skills 目前仅扫描包内 `src/agent/skills`（构建后为 `dist/agent/skills`）；尚未支持用户或项目级扩展目录。
 - `load_skill` 返回完整 `SKILL.md`（含 frontmatter），大文件可能占用较多上下文。
 - `run_py` 依赖本机 `python3`，且不像 `run_js` 具备 Node 权限模型级别的文件系统隔离。
-- `isDangerousPath` 已实现但尚未接入 `read_file`、`write_file`；`exec` 无法通过解析任意 shell 字符串可靠拦截间接文件访问，后续需要独立的进程级文件系统沙箱。
+- Read／Write Tool 已按项目边界和危险路径执行自动放行、策略阻止或用户确认；`exec` 无法通过解析任意 shell 字符串可靠拦截间接文件访问，后续需要独立的进程级文件系统沙箱。
 - 流式事件处理仍保留部分 `any`，后续可基于 LangChain 事件类型进一步收紧。

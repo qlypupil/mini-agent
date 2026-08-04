@@ -39,6 +39,26 @@ describe('readFileTool', () => {
 		).resolves.toBe('relative content')
 	})
 
+	it('expands environment-variable path expressions before reading', async () => {
+		const variableName = 'TERMCLAW_READ_FILE_ROOT'
+		const previousValue = process.env[variableName]
+		const filePath = join(insideDirectory, 'environment.txt')
+		await writeFile(filePath, 'environment content')
+		process.env[variableName] = insideDirectory
+
+		try {
+			await expect(
+				readFileTool(`%${variableName}%/environment.txt`),
+			).resolves.toBe('environment content')
+		} finally {
+			if (previousValue === undefined) {
+				delete process.env[variableName]
+			} else {
+				process.env[variableName] = previousValue
+			}
+		}
+	})
+
 	it('reads through a symbolic link that points outside the current directory', async () => {
 		const outsideFile = join(outsideDirectory, 'outside.txt')
 		const linkPath = join(insideDirectory, 'outside-link.txt')

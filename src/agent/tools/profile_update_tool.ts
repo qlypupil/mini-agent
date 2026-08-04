@@ -12,7 +12,7 @@ import {
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { tool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { withPermissionLevel } from './tool_permission'
+import { withPermissionLevel } from '../permission/tool-permission'
 
 export const PROFILE_PATH = resolve(process.cwd(), '.data/profile.md')
 

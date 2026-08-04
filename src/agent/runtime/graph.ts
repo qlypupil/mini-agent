@@ -31,7 +31,11 @@ import { createCheckpointer } from '../storage/checkpointer'
 import {
 	type PermissionedTool,
 	type ToolPermissionLevel,
-} from '../tools/tool_permission'
+} from '../permission/tool-permission'
+import {
+	classifyToolAuthorization,
+	createProjectPathBoundary,
+} from '../permission/tool-authorization'
 
 export type ContextApplyMode = 'once' | 'persist'
 
@@ -80,6 +84,7 @@ export interface CreateChatGraphOptions {
 	tools: PermissionedTool[]
 	systemPrompt: string
 	checkpointer: ReturnType<typeof createCheckpointer>
+	projectRoot?: string
 }
 
 function getLatestAIMessage(messages: BaseMessage[]): AIMessage | undefined {
@@ -129,9 +134,11 @@ export function createChatGraph({
 	tools,
 	systemPrompt,
 	checkpointer,
+	projectRoot,
 }: CreateChatGraphOptions) {
 	const toolExecutor = new ToolNode(tools)
 	const toolsByName = new Map(tools.map((registeredTool) => [registeredTool.name, registeredTool]))
+	const projectBoundary = createProjectPathBoundary(projectRoot)
 
 	return new StateGraph(ChatState, ChatContext)
 		.addNode('apply_context', (state, runtime) => {
@@ -174,7 +181,7 @@ export function createChatGraph({
 			const toolCalls = lastMessage?.tool_calls ?? []
 			if (toolCalls.length === 0) return {}
 
-			const requests = toolCalls.map((toolCall): ToolApprovalRequest => {
+			const authorizations = toolCalls.map((toolCall) => {
 				const registeredTool = toolsByName.get(toolCall.name)
 				if (!registeredTool) {
 					throw new Error(`Tool "${toolCall.name}" is not registered.`)
@@ -184,18 +191,57 @@ export function createChatGraph({
 				}
 
 				return {
-					id: toolCall.id,
+					toolCall,
+					registeredTool,
+					authorization: classifyToolAuthorization(
+						registeredTool,
+						toolCall.args,
+						projectBoundary,
+					),
+				}
+			})
+			const blockedMessages = authorizations.flatMap(
+				({ toolCall, authorization }) => {
+					if (authorization.action !== 'deny') return []
+
+					const content = authorization.reason === 'invalid_path'
+						? 'The requested file path could not be safely resolved. The tool was not executed. Explain the restriction to the user and do not retry or bypass it with another tool.'
+						: 'The requested file path is protected by the local filesystem safety policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it with another tool.'
+
+					return [
+						new ToolMessage({
+							name: toolCall.name,
+							tool_call_id: toolCall.id!,
+							status: 'error',
+							content,
+						}),
+					]
+				},
+			)
+			const pendingAuthorizations = authorizations.filter(
+				({ authorization }) => authorization.action === 'ask',
+			)
+			if (pendingAuthorizations.length === 0) {
+				return { messages: blockedMessages }
+			}
+
+			const requests = pendingAuthorizations.map(
+				({ toolCall, registeredTool }): ToolApprovalRequest => ({
+					id: toolCall.id!,
 					name: toolCall.name,
 					args: toolCall.args,
 					permissionLevel: registeredTool.permission_level,
-				}
-			})
+				}),
+			)
 			const resume = interrupt<ToolApprovalInterrupt, ToolApprovalResume>({
 				type: 'tool_approval',
 				requests,
 			})
-			const decisions = validateApprovalResume(resume, toolCalls.length)
-			const rejectedMessages = toolCalls.flatMap((toolCall, index) => {
+			const decisions = validateApprovalResume(
+				resume,
+				pendingAuthorizations.length,
+			)
+			const rejectedMessages = pendingAuthorizations.flatMap(({ toolCall }, index) => {
 				if (decisions[index].type === 'approve') return []
 
 				return [
@@ -208,7 +254,7 @@ export function createChatGraph({
 				]
 			})
 
-			return { messages: rejectedMessages }
+			return { messages: [...blockedMessages, ...rejectedMessages] }
 		})
 		.addNode('tools', async function toolNode(state, runtime) {
 			const lastMessage = getLatestAIMessage(state.messages)

@@ -13,6 +13,19 @@ export interface DangerousPathOptions {
 	resolveRealPath?: (absolutePath: string) => string | undefined
 }
 
+export type DangerousPathStatus =
+	| 'safe'
+	| 'deny'
+	| 'user_selection_required'
+	| 'invalid'
+
+export interface DangerousPathInspection {
+	status: DangerousPathStatus
+	requestedPath?: string
+	resolvedPath?: string
+	ruleIds: string[]
+}
+
 interface DangerousPathRule {
 	id: string
 	patterns: string[]
@@ -38,6 +51,16 @@ interface RuntimeContext {
 	systemDrive?: string
 	inputVariable: (name: string) => string | undefined
 	patternVariables: Map<string, string[]>
+}
+
+interface RulePattern {
+	id: string
+	pattern: string
+}
+
+interface RuleMatcher {
+	id: string
+	matcher: RegExp
 }
 
 const config = dangerousPathConfig as unknown as DangerousPathConfig
@@ -403,9 +426,12 @@ function expandPattern(pattern: string, context: RuntimeContext): string[] {
 	return expandedPatterns
 }
 
-function dynamicPatterns(context: RuntimeContext): string[] {
-	const patterns: string[] = []
+function dynamicPatterns(context: RuntimeContext): RulePattern[] {
+	const patterns: RulePattern[] = []
 	const userHomes = context.patternVariables.get('USER_HOME') ?? []
+	const addPattern = (id: string, pattern: string): void => {
+		patterns.push({ id, pattern })
+	}
 
 	for (const rule of config.dynamic_rules) {
 		if (!rule.platforms.includes(context.platform)) {
@@ -415,12 +441,15 @@ function dynamicPatterns(context: RuntimeContext): string[] {
 		if (rule.id === 'personal-known-folders') {
 			for (const home of userHomes) {
 				for (const folder of rule.folders ?? []) {
-					patterns.push(context.pathApi.join(home, folder, '**'))
+					addPattern(rule.id, context.pathApi.join(home, folder, '**'))
 					if (folder === 'CloudStorage' && context.platform === 'darwin') {
-						patterns.push(context.pathApi.join(home, 'Library', 'CloudStorage', '**'))
+						addPattern(
+							rule.id,
+							context.pathApi.join(home, 'Library', 'CloudStorage', '**'),
+						)
 					}
 					if (folder === 'OneDrive') {
-						patterns.push(context.pathApi.join(home, 'OneDrive*', '**'))
+						addPattern(rule.id, context.pathApi.join(home, 'OneDrive*', '**'))
 					}
 				}
 			}
@@ -428,23 +457,25 @@ function dynamicPatterns(context: RuntimeContext): string[] {
 			for (const variableName of ['OneDrive', 'OneDriveCommercial', 'OneDriveConsumer']) {
 				const value = context.inputVariable(variableName)
 				if (value) {
-					patterns.push(context.pathApi.join(value, '**'))
+					addPattern(rule.id, context.pathApi.join(value, '**'))
 				}
 			}
 		}
 
 		if (rule.id === 'removable-network-and-cloud-volumes') {
 			if (context.platform === 'darwin') {
-				patterns.push('/Volumes/**')
+				addPattern(rule.id, '/Volumes/**')
 			} else if (context.platform === 'linux') {
-				patterns.push('/media/**', '/mnt/**', '/run/media/**')
+				for (const pattern of ['/media/**', '/mnt/**', '/run/media/**']) {
+					addPattern(rule.id, pattern)
+				}
 			} else {
-				patterns.push('//*/**')
+				addPattern(rule.id, '//*/**')
 				const systemDriveLetter = context.systemDrive?.[0]?.toUpperCase()
 				for (let code = 'A'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code += 1) {
 					const driveLetter = String.fromCharCode(code)
 					if (driveLetter !== systemDriveLetter) {
-						patterns.push(`${driveLetter}:/**`)
+						addPattern(rule.id, `${driveLetter}:/**`)
 					}
 				}
 			}
@@ -489,22 +520,48 @@ function globToRegExp(pattern: string, caseSensitive: boolean): RegExp {
 	return new RegExp(`${source}$`, caseSensitive ? '' : 'i')
 }
 
-function createMatchers(context: RuntimeContext): RegExp[] {
-	const configuredPatterns = [
-		...config.rules.common.flatMap((rule) => rule.patterns),
-		...config.rules[context.platform].flatMap((rule) => rule.patterns),
-	]
-	const expandedPatterns = configuredPatterns.flatMap((pattern) =>
-		expandPattern(pattern, context),
-	)
-	const allPatterns = [...expandedPatterns, ...dynamicPatterns(context)].map((pattern) =>
-		normalizePattern(pattern, context),
-	)
+function createRuleMatchers(
+	patterns: RulePattern[],
+	context: RuntimeContext,
+): RuleMatcher[] {
 	const caseSensitive = context.platform === 'linux'
+	const uniquePatterns = new Map<string, RulePattern>()
 
-	return [...new Set(allPatterns)].map((pattern) =>
-		globToRegExp(pattern, caseSensitive),
+	for (const pattern of patterns) {
+		const normalizedPattern = normalizePattern(pattern.pattern, context)
+		uniquePatterns.set(`${pattern.id}\0${normalizedPattern}`, {
+			id: pattern.id,
+			pattern: normalizedPattern,
+		})
+	}
+
+	return [...uniquePatterns.values()].map(({ id, pattern }) => ({
+		id,
+		matcher: globToRegExp(pattern, caseSensitive),
+	}))
+}
+
+function createMatchers(context: RuntimeContext): {
+	staticMatchers: RuleMatcher[]
+	dynamicMatchers: RuleMatcher[]
+} {
+	const configuredRules = [
+		...config.rules.common,
+		...config.rules[context.platform],
+	]
+	const staticPatterns = configuredRules.flatMap((rule) =>
+		rule.patterns.flatMap((pattern) =>
+			expandPattern(pattern, context).map((expandedPattern) => ({
+				id: rule.id,
+				pattern: expandedPattern,
+			})),
+		),
 	)
+
+	return {
+		staticMatchers: createRuleMatchers(staticPatterns, context),
+		dynamicMatchers: createRuleMatchers(dynamicPatterns(context), context),
+	}
 }
 
 function resolveExistingPath(absolutePath: string, pathApi: typeof posix): string | undefined {
@@ -534,60 +591,141 @@ function resolveExistingPath(absolutePath: string, pathApi: typeof posix): strin
 	}
 }
 
-function matchesDangerousRule(candidate: string, matchers: RegExp[]): boolean {
-	return matchers.some((matcher) => matcher.test(candidate))
+function matchingRuleIds(candidate: string, matchers: RuleMatcher[]): string[] {
+	return [
+		...new Set(
+			matchers
+				.filter(({ matcher }) => matcher.test(candidate))
+				.map(({ id }) => id),
+		),
+	]
 }
 
-function evaluateDangerousPath(
+function inspectPath(
 	filePath: string,
 	options: DangerousPathOptions,
-): boolean {
+): DangerousPathInspection {
 	const platform = options.platform ?? process.platform
 	if (!isSupportedPlatform(platform)) {
-		return true
+		return { status: 'invalid', ruleIds: [] }
 	}
 
 	const context = createRuntimeContext(platform, options)
 	const expandedPath = expandInputPath(filePath, context)
 	if (expandedPath === undefined) {
-		return true
+		return { status: 'invalid', ruleIds: [] }
 	}
 
 	const candidate = normalizeCandidate(expandedPath, context)
-	if (
-		candidate === undefined ||
-		(platform === 'win32' && hasDangerousWindowsSyntax(candidate))
-	) {
-		return true
+	if (candidate === undefined) {
+		return { status: 'invalid', ruleIds: [] }
+	}
+	if (platform === 'win32' && hasDangerousWindowsSyntax(candidate)) {
+		return {
+			status: 'deny',
+			requestedPath: candidate,
+			ruleIds: ['win32-special-path'],
+		}
 	}
 
-	const matchers = createMatchers(context)
-	if (matchesDangerousRule(candidate, matchers)) {
-		return true
-	}
+	const { staticMatchers, dynamicMatchers } = createMatchers(context)
+	let staticRuleIds = matchingRuleIds(candidate, staticMatchers)
+	let dynamicRuleIds = matchingRuleIds(candidate, dynamicMatchers)
 
 	const realPathResolver =
 		options.resolveRealPath ??
 		(platform === process.platform
 			? (absolutePath: string) => resolveExistingPath(absolutePath, context.pathApi)
 			: undefined)
-	if (!realPathResolver) {
-		return false
+	let resolvedPath = candidate
+
+	if (realPathResolver) {
+		try {
+			const realPath = realPathResolver(candidate)
+			if (realPath !== undefined) {
+				const normalizedResolvedPath = normalizeCandidate(realPath, context)
+				if (normalizedResolvedPath === undefined) {
+					return {
+						status: 'invalid',
+						requestedPath: candidate,
+						ruleIds: [],
+					}
+				}
+				resolvedPath = normalizedResolvedPath
+			}
+		} catch {
+			if (staticRuleIds.length > 0) {
+				return {
+					status: 'deny',
+					requestedPath: candidate,
+					ruleIds: staticRuleIds,
+				}
+			}
+			return {
+				status: 'invalid',
+				requestedPath: candidate,
+				ruleIds: [],
+			}
+		}
+	}
+
+	if (platform === 'win32' && hasDangerousWindowsSyntax(resolvedPath)) {
+		return {
+			status: 'deny',
+			requestedPath: candidate,
+			resolvedPath,
+			ruleIds: ['win32-special-path'],
+		}
+	}
+
+	staticRuleIds = [
+		...new Set([...staticRuleIds, ...matchingRuleIds(resolvedPath, staticMatchers)]),
+	]
+	dynamicRuleIds = [
+		...new Set([
+			...dynamicRuleIds,
+			...matchingRuleIds(resolvedPath, dynamicMatchers),
+		]),
+	]
+	const ruleIds = [...staticRuleIds, ...dynamicRuleIds]
+
+	if (staticRuleIds.length > 0) {
+		return {
+			status: 'deny',
+			requestedPath: candidate,
+			resolvedPath,
+			ruleIds,
+		}
+	}
+	if (dynamicRuleIds.length > 0) {
+		return {
+			status: 'user_selection_required',
+			requestedPath: candidate,
+			resolvedPath,
+			ruleIds,
+		}
+	}
+
+	return {
+		status: 'safe',
+		requestedPath: candidate,
+		resolvedPath,
+		ruleIds: [],
+	}
+}
+
+export function inspectDangerousPath(
+	filePath: string,
+	options: DangerousPathOptions = {},
+): DangerousPathInspection {
+	if (typeof filePath !== 'string') {
+		return { status: 'invalid', ruleIds: [] }
 	}
 
 	try {
-		const resolvedPath = realPathResolver(candidate)
-		if (resolvedPath === undefined) {
-			return false
-		}
-		const normalizedResolvedPath = normalizeCandidate(resolvedPath, context)
-		return (
-			normalizedResolvedPath === undefined ||
-			(platform === 'win32' && hasDangerousWindowsSyntax(normalizedResolvedPath)) ||
-			matchesDangerousRule(normalizedResolvedPath, matchers)
-		)
+		return inspectPath(filePath, options)
 	} catch {
-		return true
+		return { status: 'invalid', ruleIds: [] }
 	}
 }
 
@@ -599,9 +737,5 @@ export function isDangerousPath(
 		return true
 	}
 
-	try {
-		return evaluateDangerousPath(filePath, options)
-	} catch {
-		return true
-	}
+	return inspectDangerousPath(filePath, options).status !== 'safe'
 }

@@ -1,7 +1,11 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { isDangerousPath, type DangerousPathOptions } from './is-dangerous-path'
+import {
+	inspectDangerousPath,
+	isDangerousPath,
+	type DangerousPathOptions,
+} from './is-dangerous-path'
 
 function darwinOptions(overrides: DangerousPathOptions = {}): DangerousPathOptions {
 	return {
@@ -249,5 +253,71 @@ describe('isDangerousPath', () => {
 				resolveRealPath: () => undefined,
 			}),
 		).toBe(true)
+	})
+})
+
+describe('inspectDangerousPath', () => {
+	it('distinguishes static deny rules from dynamic user-selection rules', () => {
+		expect(
+			inspectDangerousPath('/home/alice/work/project/.env', linuxOptions()),
+		).toMatchObject({
+			status: 'deny',
+			ruleIds: ['common-environment-secret-files'],
+		})
+		expect(
+			inspectDangerousPath(
+				'/home/alice/Documents/notes.txt',
+				linuxOptions(),
+			),
+		).toMatchObject({
+			status: 'user_selection_required',
+			ruleIds: ['personal-known-folders'],
+		})
+	})
+
+	it('returns normalized requested and resolved paths for a safe path', () => {
+		expect(
+			inspectDangerousPath('../README.md', linuxOptions()),
+		).toEqual({
+			status: 'safe',
+			requestedPath: '/home/alice/work/README.md',
+			resolvedPath: '/home/alice/work/README.md',
+			ruleIds: [],
+		})
+	})
+
+	it('classifies a protected real-path target as denied', () => {
+		expect(
+			inspectDangerousPath(
+				'/tmp/apparently-safe.txt',
+				linuxOptions({ resolveRealPath: () => '/etc/shadow' }),
+			),
+		).toMatchObject({
+			status: 'deny',
+			requestedPath: '/tmp/apparently-safe.txt',
+			resolvedPath: '/etc/shadow',
+			ruleIds: ['linux-local-authentication'],
+		})
+	})
+
+	it('returns invalid for paths that cannot be expanded or resolved', () => {
+		expect(inspectDangerousPath('$UNKNOWN/file.txt', linuxOptions())).toEqual({
+			status: 'invalid',
+			ruleIds: [],
+		})
+		expect(
+			inspectDangerousPath(
+				'/tmp/file.txt',
+				linuxOptions({
+					resolveRealPath: () => {
+						throw new Error('permission denied')
+					},
+				}),
+			),
+		).toMatchObject({
+			status: 'invalid',
+			requestedPath: '/tmp/file.txt',
+			ruleIds: [],
+		})
 	})
 })

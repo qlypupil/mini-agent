@@ -3,7 +3,7 @@ import { createMemoryDeleteTool } from './memory_delete_tool'
 import { createMemoryRetrieveTool } from './memory_retrieve_tool'
 import { createProfileUpdateTool } from './profile_update_tool'
 import { tools } from './index'
-import type { ToolPermissionLevel } from './tool_permission'
+import type { ToolPermissionLevel } from '../permission/tool-permission'
 
 const expectedPermissions = {
 	read_file: 'read',
@@ -39,6 +39,22 @@ describe('tool permissions', () => {
 		expect(createMemoryRetrieveTool().permission_level).toBe('db')
 		expect(createMemoryDeleteTool().permission_level).toBe('db')
 		expect(createProfileUpdateTool().permission_level).toBe('write')
+	})
+
+	it('declares model-controlled file path arguments only on file tools', () => {
+		expect(
+			Object.fromEntries(
+				tools
+					.filter((registeredTool) => registeredTool.file_path_arg)
+					.map((registeredTool) => [
+						registeredTool.name,
+						registeredTool.file_path_arg,
+					]),
+			),
+		).toEqual({
+			read_file: 'path',
+			write_file: 'path',
+		})
 	})
 
 	it('describes relative-date search as a sequential tool flow', () => {
