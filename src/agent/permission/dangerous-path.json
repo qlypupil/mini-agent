@@ -1,0 +1,789 @@
+{
+  "version": 1,
+  "name": "cross-platform-dangerous-read-paths",
+  "reviewed_at": "2026-08-04",
+  "description": "A conservative deny baseline for third-party software with broad filesystem access. Paths are normalized to forward slashes before matching.",
+  "policy": {
+    "default_security_model": "allowlist",
+    "default_rule_action": "deny_read",
+    "recommended_behavior": "Allow only application runtime files and files explicitly selected by the user. Apply this list as a second line of defense.",
+    "limitations": [
+      "No static path list can cover every application, redirected folder, mounted volume, container, network share, or future operating-system change.",
+      "Environment variables are untrusted input. Resolve standard locations with operating-system APIs where possible.",
+      "File permissions alone do not stop screenshots, accessibility capture, clipboard access, process injection, network exfiltration, or reads performed by a privileged helper.",
+      "Rules for personal folders are deny-by-default and may be opened only through an explicit user-selected file or directory grant."
+    ],
+    "matching_requirements": [
+      "Convert the candidate to an absolute path before matching.",
+      "Resolve symbolic links, junctions, aliases, mount points, short 8.3 names, and every existing parent before making the decision.",
+      "Normalize directory separators to forward slashes and collapse dot segments.",
+      "Use case-insensitive matching on Windows. On macOS, follow the actual volume case-sensitivity setting.",
+      "Expand USER_HOME once for every local account, including root, administrator, service, and currently logged-in users.",
+      "Expand list-valued variables such as KUBECONFIG into separate paths. Ignore an optional variable only when it is genuinely unset.",
+      "Treat a pattern ending in /** as matching both the directory itself and all descendants.",
+      "Reject Windows device namespaces, raw volumes, named pipes, alternate data streams, and UNC administrative shares before glob matching.",
+      "Perform the same check again immediately before opening the file to reduce time-of-check/time-of-use races."
+    ],
+    "glob_syntax": {
+      "separator": "/",
+      "star": "Matches characters inside one path segment.",
+      "double_star": "Matches zero or more path segments.",
+      "variables": "${NAME} is expanded from a trusted operating-system-derived value before matching."
+    }
+  },
+  "variables": {
+    "USER_HOME": "Every local user home resolved from the operating-system account database, not from an untrusted HOME value.",
+    "SYSTEMDRIVE": "Windows system drive, normally C:.",
+    "SYSTEMROOT": "Windows directory, normally C:/Windows.",
+    "PROGRAMDATA": "Windows shared application-data directory.",
+    "APPDATA": "Windows roaming application-data directory for each user.",
+    "LOCALAPPDATA": "Windows local application-data directory for each user.",
+    "XDG_CONFIG_HOME": "Linux user configuration directory; default USER_HOME/.config.",
+    "XDG_DATA_HOME": "Linux user data directory; default USER_HOME/.local/share.",
+    "XDG_STATE_HOME": "Linux user state directory; default USER_HOME/.local/state.",
+    "XDG_RUNTIME_DIR": "Linux per-user runtime directory.",
+    "GNUPGHOME": "Optional GnuPG home override.",
+    "AWS_SHARED_CREDENTIALS_FILE": "Optional AWS shared credentials file override.",
+    "AZURE_CONFIG_DIR": "Optional Azure CLI configuration-directory override.",
+    "CLOUDSDK_CONFIG": "Optional Google Cloud CLI configuration-directory override.",
+    "KUBECONFIG": "Optional platform-separated list of Kubernetes configuration files.",
+    "DOCKER_CONFIG": "Optional Docker CLI configuration-directory override."
+  },
+  "dynamic_rules": [
+    {
+      "id": "personal-known-folders",
+      "platforms": [
+        "darwin",
+        "win32",
+        "linux"
+      ],
+      "risk": "high",
+      "action": "deny_read_unless_user_selected",
+      "source": "Resolve known folders with operating-system APIs for every user account.",
+      "folders": [
+        "Desktop",
+        "Documents",
+        "Downloads",
+        "Pictures",
+        "Photos",
+        "Music",
+        "Movies",
+        "Videos",
+        "Public",
+        "CloudStorage",
+        "OneDrive"
+      ],
+      "reason": "These folders commonly contain private documents, identity records, source material, media, exports, and downloaded secrets."
+    },
+    {
+      "id": "removable-network-and-cloud-volumes",
+      "platforms": [
+        "darwin",
+        "win32",
+        "linux"
+      ],
+      "risk": "high",
+      "action": "deny_read_unless_user_selected",
+      "source": "Enumerate mounted removable media, network shares, and file-provider or cloud-sync roots with operating-system APIs.",
+      "reason": "Mounted storage may expose unrelated users, backups, credentials, and synchronized private data outside the local home directory."
+    }
+  ],
+  "rules": {
+    "common": [
+      {
+        "id": "common-ssh",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/.ssh/**"
+        ],
+        "reason": "SSH private keys, certificates, authorized keys, host trust, and connection metadata."
+      },
+      {
+        "id": "common-openpgp",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/.gnupg/**",
+          "${GNUPGHOME}/**"
+        ],
+        "reason": "OpenPGP private keys, trust databases, and agent state."
+      },
+      {
+        "id": "common-cloud-and-cluster-credentials",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/.aws/**",
+          "${AWS_SHARED_CREDENTIALS_FILE}",
+          "${USER_HOME}/.azure/**",
+          "${AZURE_CONFIG_DIR}/**",
+          "${USER_HOME}/.config/gcloud/**",
+          "${XDG_CONFIG_HOME}/gcloud/**",
+          "${CLOUDSDK_CONFIG}/**",
+          "${USER_HOME}/.kube/**",
+          "${KUBECONFIG}",
+          "${USER_HOME}/.docker/**",
+          "${DOCKER_CONFIG}/**"
+        ],
+        "reason": "Cloud, Kubernetes, and registry configuration can contain reusable access tokens, client keys, and authentication helpers."
+      },
+      {
+        "id": "common-developer-credentials",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/.npmrc",
+          "${USER_HOME}/.pypirc",
+          "${USER_HOME}/.netrc",
+          "${USER_HOME}/_netrc",
+          "${USER_HOME}/.git-credentials",
+          "${USER_HOME}/.config/gh/hosts.yml",
+          "${XDG_CONFIG_HOME}/gh/hosts.yml",
+          "${USER_HOME}/.config/glab-cli/config.yml",
+          "${USER_HOME}/.terraform.d/credentials.tfrc.json",
+          "${USER_HOME}/.terraformrc",
+          "${USER_HOME}/.vault-token",
+          "${USER_HOME}/.consul-token",
+          "${USER_HOME}/.nomad-token",
+          "${USER_HOME}/.gem/credentials",
+          "${USER_HOME}/.cargo/credentials",
+          "${USER_HOME}/.cargo/credentials.toml",
+          "${USER_HOME}/.m2/settings.xml",
+          "${USER_HOME}/.gradle/gradle.properties",
+          "${USER_HOME}/.config/pip/pip.conf",
+          "${USER_HOME}/.config/containers/auth.json",
+          "${USER_HOME}/.config/rclone/rclone.conf"
+        ],
+        "reason": "Package registries, source-control hosts, infrastructure tools, and remote storage often persist plaintext or recoverable tokens here."
+      },
+      {
+        "id": "common-environment-secret-files",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "**/.env",
+          "**/.env.*",
+          "**/.direnv/**",
+          "**/secrets.*",
+          "**/credentials.*",
+          "**/*-credentials.json",
+          "**/*service-account*.json"
+        ],
+        "reason": "Environment and secret files frequently contain passwords, API keys, database URLs, and signing material."
+      },
+      {
+        "id": "common-private-key-files",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "**/id_rsa",
+          "**/id_dsa",
+          "**/id_ecdsa",
+          "**/id_ed25519",
+          "**/*.pem",
+          "**/*.key",
+          "**/*.p12",
+          "**/*.pfx",
+          "**/*.jks",
+          "**/*.keystore",
+          "**/*.ovpn",
+          "**/*.mobileconfig"
+        ],
+        "reason": "Private keys, certificate archives, VPN profiles, and device profiles can grant identity or network access."
+      },
+      {
+        "id": "common-infrastructure-state",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "**/*.tfstate",
+          "**/*.tfstate.*",
+          "**/.terraform/**",
+          "**/.terragrunt-cache/**"
+        ],
+        "reason": "Infrastructure state and caches may contain provider credentials, sensitive outputs, and full resource inventories."
+      },
+      {
+        "id": "common-password-vaults-and-wallets",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "**/*.kdbx",
+          "**/*.opvault/**",
+          "**/1Password.agilekeychain/**",
+          "**/wallet.dat",
+          "**/keystore/**"
+        ],
+        "reason": "Password-manager vaults, cryptocurrency wallets, and application keystores remain high-value even when encrypted."
+      },
+      {
+        "id": "common-shell-config-and-history",
+        "category": "private_activity",
+        "risk": "high",
+        "patterns": [
+          "${USER_HOME}/.bash_history",
+          "${USER_HOME}/.zsh_history",
+          "${USER_HOME}/.sh_history",
+          "${USER_HOME}/.fish_history",
+          "${USER_HOME}/.python_history",
+          "${USER_HOME}/.node_repl_history",
+          "${USER_HOME}/.mysql_history",
+          "${USER_HOME}/.psql_history",
+          "${USER_HOME}/.sqlite_history",
+          "${USER_HOME}/.rediscli_history",
+          "${USER_HOME}/.lesshst",
+          "${USER_HOME}/.bashrc",
+          "${USER_HOME}/.bash_profile",
+          "${USER_HOME}/.profile",
+          "${USER_HOME}/.zshrc",
+          "${USER_HOME}/.zprofile",
+          "${USER_HOME}/.config/fish/config.fish"
+        ],
+        "reason": "Command histories and startup scripts reveal activity and frequently contain pasted credentials or exported secrets."
+      }
+    ],
+    "darwin": [
+      {
+        "id": "darwin-keychains",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/Library/Keychains/**",
+          "/Library/Keychains/**",
+          "/System/Library/Keychains/**"
+        ],
+        "reason": "macOS keychains store passwords, digital identities, encryption keys, certificates, and secure notes."
+      },
+      {
+        "id": "darwin-privacy-databases",
+        "category": "security_policy",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/Library/Application Support/com.apple.TCC/**",
+          "/Library/Application Support/com.apple.TCC/**",
+          "/private/var/db/TCC/**"
+        ],
+        "reason": "TCC databases record privacy grants for protected resources."
+      },
+      {
+        "id": "darwin-communications-and-identity",
+        "category": "private_activity",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/Library/Mail/**",
+          "${USER_HOME}/Library/Messages/**",
+          "${USER_HOME}/Library/Calendars/**",
+          "${USER_HOME}/Library/Accounts/**",
+          "${USER_HOME}/Library/Application Support/AddressBook/**",
+          "${USER_HOME}/Library/Application Support/CallHistoryDB/**",
+          "${USER_HOME}/Library/Application Support/CallHistoryTransactions/**",
+          "${USER_HOME}/Library/Application Support/Knowledge/**",
+          "${USER_HOME}/Library/HomeKit/**",
+          "${USER_HOME}/Library/Group Containers/group.com.apple.notes/**"
+        ],
+        "reason": "Mail, messages, contacts, calendars, call history, account metadata, usage knowledge, home data, and notes."
+      },
+      {
+        "id": "darwin-browser-data",
+        "category": "browser_data",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/Library/Safari/**",
+          "${USER_HOME}/Library/Cookies/**",
+          "${USER_HOME}/Library/Application Support/Google/Chrome/**",
+          "${USER_HOME}/Library/Application Support/Chromium/**",
+          "${USER_HOME}/Library/Application Support/Microsoft Edge/**",
+          "${USER_HOME}/Library/Application Support/Firefox/Profiles/**",
+          "${USER_HOME}/Library/Application Support/BraveSoftware/Brave-Browser/**"
+        ],
+        "reason": "Browser profiles include cookies, session tokens, saved passwords, history, autofill data, and extensions."
+      },
+      {
+        "id": "darwin-cloud-device-and-photo-data",
+        "category": "private_content",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/Library/Mobile Documents/**",
+          "${USER_HOME}/Library/CloudStorage/**",
+          "${USER_HOME}/Library/MobileSync/Backup/**",
+          "${USER_HOME}/Library/Photos/**",
+          "${USER_HOME}/Pictures/Photos Library.photoslibrary/**",
+          "${USER_HOME}/Library/Application Support/MobileSync/**",
+          "${USER_HOME}/Library/Developer/CoreSimulator/Devices/**"
+        ],
+        "reason": "Cloud files, device backups, photo libraries, and simulator data can contain complete copies of private application data."
+      },
+      {
+        "id": "darwin-messaging-app-data",
+        "category": "private_activity",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/Library/Application Support/Signal/**",
+          "${USER_HOME}/Library/Application Support/Telegram Desktop/**",
+          "${USER_HOME}/Library/Application Support/Slack/**",
+          "${USER_HOME}/Library/Application Support/discord/**",
+          "${USER_HOME}/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/**"
+        ],
+        "reason": "Messaging application databases and attachments can expose conversations, contacts, and active sessions."
+      },
+      {
+        "id": "darwin-local-authentication",
+        "category": "system_credentials",
+        "risk": "critical",
+        "patterns": [
+          "/private/etc/master.passwd",
+          "/private/etc/master.passwd~",
+          "/private/var/db/dslocal/nodes/Default/users/**",
+          "/private/var/db/shadow/**",
+          "/private/etc/sudoers",
+          "/private/etc/sudoers.d/**",
+          "/private/etc/krb5.keytab",
+          "/private/etc/ssh/ssh_host_*_key",
+          "/private/var/db/SystemKey",
+          "/private/var/db/FileVaultPRK.dat",
+          "/private/var/root/**",
+          "/var/root/**"
+        ],
+        "reason": "Local account records, password material, privilege policy, host keys, Kerberos keys, FileVault recovery material, and administrator data."
+      },
+      {
+        "id": "darwin-system-management-data",
+        "category": "security_policy",
+        "risk": "critical",
+        "patterns": [
+          "/var/db/ConfigurationProfiles/**",
+          "/private/var/db/ConfigurationProfiles/**",
+          "/Library/Managed Preferences/**",
+          "/Library/Preferences/com.apple.loginwindow.plist"
+        ],
+        "reason": "Device-management profiles and managed policy may disclose security configuration, identities, and organization data."
+      },
+      {
+        "id": "darwin-memory-devices-logs-and-backups",
+        "category": "system_data",
+        "risk": "critical",
+        "patterns": [
+          "/dev/**",
+          "/private/var/vm/**",
+          "/cores/**",
+          "/private/var/audit/**",
+          "/private/var/log/**",
+          "/Volumes/*/Backups.backupdb/**",
+          "/Volumes/.timemachine/**",
+          "/.MobileBackups/**",
+          "${USER_HOME}/.Trash/**"
+        ],
+        "reason": "Raw devices, swap, core dumps, audit data, logs, backups, and deleted files can bypass normal file boundaries or retain historical secrets."
+      }
+    ],
+    "win32": [
+      {
+        "id": "win32-registry-hives",
+        "category": "system_credentials",
+        "risk": "critical",
+        "patterns": [
+          "${SYSTEMROOT}/System32/config/**",
+          "${SYSTEMROOT}/repair/**",
+          "${SYSTEMROOT}/NTDS/**",
+          "${SYSTEMROOT}/SYSVOL/**",
+          "${USER_HOME}/NTUSER.DAT",
+          "${USER_HOME}/NTUSER.DAT.*",
+          "${USER_HOME}/AppData/Local/Microsoft/Windows/UsrClass.dat",
+          "${USER_HOME}/AppData/Local/Microsoft/Windows/UsrClass.dat.*"
+        ],
+        "reason": "Registry hives contain local accounts, security policy, service secrets, system configuration, and per-user activity."
+      },
+      {
+        "id": "win32-dpapi-credential-vaults",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/AppData/Roaming/Microsoft/Credentials/**",
+          "${USER_HOME}/AppData/Local/Microsoft/Credentials/**",
+          "${USER_HOME}/AppData/Roaming/Microsoft/Protect/**",
+          "${USER_HOME}/AppData/Local/Microsoft/Protect/**",
+          "${USER_HOME}/AppData/Local/Microsoft/Vault/**",
+          "${USER_HOME}/AppData/Roaming/Microsoft/Crypto/RSA/**",
+          "${PROGRAMDATA}/Microsoft/Protect/**",
+          "${PROGRAMDATA}/Microsoft/Vault/**",
+          "${PROGRAMDATA}/Microsoft/Crypto/RSA/MachineKeys/**",
+          "${SYSTEMROOT}/System32/Microsoft/Protect/**"
+        ],
+        "reason": "Credential Manager, DPAPI master keys, vaults, and private-key containers protect reusable user and machine credentials."
+      },
+      {
+        "id": "win32-identity-brokers-and-hello",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/AppData/Local/Microsoft/TokenBroker/**",
+          "${USER_HOME}/AppData/Local/Microsoft/OneAuth/**",
+          "${USER_HOME}/AppData/Local/Microsoft/IdentityCache/**",
+          "${USER_HOME}/AppData/Local/Packages/Microsoft.AAD.BrokerPlugin_*/**",
+          "${SYSTEMROOT}/ServiceProfiles/LocalService/AppData/Local/Microsoft/Ngc/**"
+        ],
+        "reason": "Identity broker caches and Windows Hello data participate in account and token authentication."
+      },
+      {
+        "id": "win32-network-and-host-credentials",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${PROGRAMDATA}/ssh/ssh_host_*_key",
+          "${PROGRAMDATA}/ssh/administrators_authorized_keys",
+          "${PROGRAMDATA}/Microsoft/Wlansvc/Profiles/Interfaces/**",
+          "${SYSTEMROOT}/System32/inetsrv/config/**"
+        ],
+        "reason": "OpenSSH host keys, administrator authorization, Wi-Fi profiles, and web-server configuration can expose privileged credentials."
+      },
+      {
+        "id": "win32-browser-data",
+        "category": "browser_data",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/AppData/Local/Google/Chrome/User Data/**",
+          "${USER_HOME}/AppData/Local/Google/Chrome Beta/User Data/**",
+          "${USER_HOME}/AppData/Local/Chromium/User Data/**",
+          "${USER_HOME}/AppData/Local/Microsoft/Edge/User Data/**",
+          "${USER_HOME}/AppData/Local/BraveSoftware/Brave-Browser/User Data/**",
+          "${USER_HOME}/AppData/Roaming/Mozilla/Firefox/Profiles/**"
+        ],
+        "reason": "Browser profiles include cookies, session tokens, saved passwords, history, autofill data, and extensions."
+      },
+      {
+        "id": "win32-mail-messaging-and-powershell",
+        "category": "private_activity",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/AppData/Local/Microsoft/Outlook/**",
+          "${USER_HOME}/Documents/Outlook Files/**",
+          "${USER_HOME}/AppData/Local/Packages/microsoft.windowscommunicationsapps_*/**",
+          "${USER_HOME}/AppData/Roaming/Microsoft/Teams/**",
+          "${USER_HOME}/AppData/Roaming/Signal/**",
+          "${USER_HOME}/AppData/Roaming/Telegram Desktop/**",
+          "${USER_HOME}/AppData/Roaming/discord/**",
+          "${USER_HOME}/AppData/Roaming/Microsoft/Windows/PowerShell/PSReadLine/**",
+          "${USER_HOME}/AppData/Roaming/Microsoft/PowerShell/PSReadLine/**"
+        ],
+        "reason": "Mail, messaging sessions, attachments, and PowerShell command history can reveal private content and credentials."
+      },
+      {
+        "id": "win32-memory-crash-and-virtual-disks",
+        "category": "system_data",
+        "risk": "critical",
+        "patterns": [
+          "${SYSTEMDRIVE}/pagefile.sys",
+          "${SYSTEMDRIVE}/hiberfil.sys",
+          "${SYSTEMDRIVE}/swapfile.sys",
+          "${SYSTEMROOT}/MEMORY.DMP",
+          "${SYSTEMROOT}/Minidump/**",
+          "${USER_HOME}/AppData/Local/CrashDumps/**",
+          "${USER_HOME}/AppData/Local/Packages/*/LocalState/ext4.vhdx"
+        ],
+        "reason": "Page files, hibernation images, crash dumps, and WSL virtual disks may contain process memory, credentials, and complete Linux filesystems."
+      },
+      {
+        "id": "win32-recovery-logs-and-deleted-data",
+        "category": "system_data",
+        "risk": "critical",
+        "patterns": [
+          "${SYSTEMDRIVE}/System Volume Information/**",
+          "${SYSTEMDRIVE}/Recovery/**",
+          "${SYSTEMROOT}/System32/Recovery/**",
+          "${SYSTEMROOT}/System32/winevt/Logs/**",
+          "${SYSTEMDRIVE}/$Recycle.Bin/**"
+        ],
+        "reason": "Restore points, recovery material, event logs, and deleted files can expose historical system and user data."
+      },
+      {
+        "id": "win32-device-and-administrative-namespaces",
+        "category": "raw_access",
+        "risk": "critical",
+        "patterns": [
+          "//./**",
+          "//?/**",
+          "//*/ADMIN$/**",
+          "//*/C$/**",
+          "//*/IPC$/**",
+          "//*/PIPE/**"
+        ],
+        "reason": "Windows device namespaces, raw volumes, administrative shares, and named pipes can bypass ordinary path boundaries."
+      }
+    ],
+    "linux": [
+      {
+        "id": "linux-local-authentication",
+        "category": "system_credentials",
+        "risk": "critical",
+        "patterns": [
+          "/etc/shadow",
+          "/etc/shadow-",
+          "/etc/gshadow",
+          "/etc/gshadow-",
+          "/etc/security/opasswd",
+          "/root/**"
+        ],
+        "reason": "Password hashes, group authentication data, password history, and root account files."
+      },
+      {
+        "id": "linux-privilege-policy",
+        "category": "security_policy",
+        "risk": "critical",
+        "patterns": [
+          "/etc/sudoers",
+          "/etc/sudoers.d/**",
+          "/etc/polkit-1/rules.d/**",
+          "/var/lib/polkit-1/**"
+        ],
+        "reason": "Privilege-elevation policy reveals or controls administrative authorization."
+      },
+      {
+        "id": "linux-host-network-and-service-keys",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "/etc/ssh/ssh_host_*_key",
+          "/etc/ssl/private/**",
+          "/etc/letsencrypt/**",
+          "/etc/wireguard/**",
+          "/etc/openvpn/**",
+          "/etc/ipsec.secrets",
+          "/etc/ppp/chap-secrets",
+          "/etc/ppp/pap-secrets",
+          "/etc/krb5.keytab",
+          "/etc/NetworkManager/system-connections/**",
+          "/usr/lib/NetworkManager/system-connections/**",
+          "/run/NetworkManager/system-connections/**"
+        ],
+        "reason": "Host keys, TLS keys, VPN secrets, Kerberos keys, and network profiles can grant machine or network identity."
+      },
+      {
+        "id": "linux-systemd-credentials",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "/run/credentials/**",
+          "/etc/credstore/**",
+          "/etc/credstore.encrypted/**",
+          "/var/lib/systemd/credential.secret"
+        ],
+        "reason": "systemd credential stores and runtime credential directories are designed to deliver secrets to services."
+      },
+      {
+        "id": "linux-process-memory-and-kernel-interfaces",
+        "category": "raw_access",
+        "risk": "critical",
+        "patterns": [
+          "/proc/*/environ",
+          "/proc/*/mem",
+          "/proc/*/cmdline",
+          "/proc/*/fd/**",
+          "/proc/kcore",
+          "/proc/keys",
+          "/proc/key-users",
+          "/sys/kernel/security/**",
+          "/dev/**"
+        ],
+        "reason": "Process environments, memory, descriptors, kernel memory, keyring metadata, security interfaces, and devices can expose secrets or bypass filesystem policy."
+      },
+      {
+        "id": "linux-desktop-keyrings-and-vaults",
+        "category": "credentials",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/.local/share/keyrings/**",
+          "${XDG_DATA_HOME}/keyrings/**",
+          "${USER_HOME}/.password-store/**",
+          "${USER_HOME}/.config/Bitwarden/**",
+          "${XDG_CONFIG_HOME}/Bitwarden/**",
+          "${XDG_RUNTIME_DIR}/keyring/**",
+          "${XDG_RUNTIME_DIR}/gnupg/**",
+          "/run/user/*/keyring/**",
+          "/run/user/*/gnupg/**"
+        ],
+        "reason": "Desktop keyrings, password stores, vault data, and credential-agent runtime state protect reusable secrets."
+      },
+      {
+        "id": "linux-browser-data",
+        "category": "browser_data",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/.config/google-chrome/**",
+          "${XDG_CONFIG_HOME}/google-chrome/**",
+          "${USER_HOME}/.config/chromium/**",
+          "${XDG_CONFIG_HOME}/chromium/**",
+          "${USER_HOME}/.config/BraveSoftware/Brave-Browser/**",
+          "${XDG_CONFIG_HOME}/BraveSoftware/Brave-Browser/**",
+          "${USER_HOME}/.mozilla/firefox/**"
+        ],
+        "reason": "Browser profiles include cookies, session tokens, saved passwords, history, autofill data, and extensions."
+      },
+      {
+        "id": "linux-mail-and-messaging-data",
+        "category": "private_activity",
+        "risk": "critical",
+        "patterns": [
+          "${USER_HOME}/.thunderbird/**",
+          "${USER_HOME}/.local/share/evolution/**",
+          "${XDG_DATA_HOME}/evolution/**",
+          "${USER_HOME}/.config/Signal/**",
+          "${XDG_CONFIG_HOME}/Signal/**",
+          "${USER_HOME}/.local/share/TelegramDesktop/**",
+          "${XDG_DATA_HOME}/TelegramDesktop/**",
+          "${USER_HOME}/.config/Slack/**",
+          "${USER_HOME}/.config/discord/**"
+        ],
+        "reason": "Mail and messaging databases can expose conversations, contacts, attachments, and active sessions."
+      },
+      {
+        "id": "linux-domain-container-and-cluster-secrets",
+        "category": "system_credentials",
+        "risk": "critical",
+        "patterns": [
+          "/var/lib/sss/**",
+          "/var/lib/samba/private/**",
+          "/etc/kubernetes/**",
+          "/var/lib/kubelet/pki/**",
+          "/var/lib/docker/swarm/**",
+          "/var/lib/rancher/**"
+        ],
+        "reason": "Identity caches, domain secrets, cluster certificates, join tokens, and orchestration state can grant infrastructure access."
+      },
+      {
+        "id": "linux-swap-crash-logs-and-backups",
+        "category": "system_data",
+        "risk": "critical",
+        "patterns": [
+          "/swapfile",
+          "/swap.img",
+          "/var/lib/systemd/coredump/**",
+          "/var/crash/**",
+          "/var/log/auth.log*",
+          "/var/log/secure*",
+          "/var/log/audit/**",
+          "/var/log/journal/**",
+          "/var/backups/**"
+        ],
+        "reason": "Swap, core dumps, authentication logs, audit trails, journals, and backups may retain credentials and historical private data."
+      },
+      {
+        "id": "linux-machine-identifiers",
+        "category": "device_identity",
+        "risk": "high",
+        "patterns": [
+          "/etc/machine-id",
+          "/var/lib/dbus/machine-id"
+        ],
+        "reason": "Stable machine identifiers enable device fingerprinting and cross-application correlation."
+      }
+    ]
+  },
+  "references": [
+    {
+      "title": "Apple: Control access to files and folders on Mac",
+      "url": "https://support.apple.com/en-gb/guide/mac-help/mchl211c911f/mac",
+      "supports": "Full Disk Access protects Mail, Messages, Safari, Home, Time Machine backups, and administrative settings."
+    },
+    {
+      "title": "Apple Platform Security: Keychain data protection",
+      "url": "https://support.apple.com/en-mide/guide/security/secb0694df1a/web",
+      "supports": "Keychains store passwords, identities, encryption keys, certificates, and secure notes."
+    },
+    {
+      "title": "Apple Developer: Accessing files from the macOS App Sandbox",
+      "url": "https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox",
+      "supports": "Applications should use a sandbox container and explicit user-selected file grants."
+    },
+    {
+      "title": "Microsoft: Registry hives",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-hives",
+      "supports": "Windows registry hive locations and per-user NTUSER.DAT files."
+    },
+    {
+      "title": "Microsoft: Credentials processes in Windows authentication",
+      "url": "https://learn.microsoft.com/en-us/windows-server/security/windows-authentication/credentials-processes-in-windows-authentication",
+      "supports": "SAM, SECURITY, cached credentials, LSA secrets, and related authentication data."
+    },
+    {
+      "title": "Microsoft: Handling passwords",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/secbp/handling-passwords",
+      "supports": "Credential Manager and DPAPI are preferred storage for Windows credentials."
+    },
+    {
+      "title": "Microsoft: Set-PSReadLineOption",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/psreadline/set-psreadlineoption?view=powershell-7.6",
+      "supports": "Default PowerShell history paths on Windows and non-Windows systems."
+    },
+    {
+      "title": "Linux man-pages: shadow(5)",
+      "url": "https://man7.org/linux/man-pages/man5/shadow.5.html",
+      "supports": "/etc/shadow contains password information and must not be readable by regular users."
+    },
+    {
+      "title": "Linux man-pages: proc_pid_environ(5)",
+      "url": "https://man7.org/linux/man-pages/man5/proc_pid_environ.5.html",
+      "supports": "/proc/PID/environ exposes a process environment."
+    },
+    {
+      "title": "Linux man-pages: proc_pid_mem(5)",
+      "url": "https://man7.org/linux/man-pages/man5/proc_pid_mem.5.html",
+      "supports": "/proc/PID/mem exposes process memory subject to ptrace checks."
+    },
+    {
+      "title": "NetworkManager: keyfile settings plugin",
+      "url": "https://networkmanager.dev/docs/api/latest/nm-settings-keyfile.html",
+      "supports": "Connection profiles can contain private keys and passphrases, including plaintext values."
+    },
+    {
+      "title": "OpenSSH manual: ssh(1)",
+      "url": "https://man.openbsd.org/ssh.1",
+      "supports": "Default per-user SSH configuration and private identity paths."
+    },
+    {
+      "title": "GnuPG: GPG configuration options",
+      "url": "https://gnupg.org/documentation/manuals/gnupg/GPG-Configuration.html",
+      "supports": "Default GnuPG home and private-key storage."
+    },
+    {
+      "title": "Chromium: User Data Directory",
+      "url": "https://chromium.googlesource.com/chromium/src/+/main/docs/user_data_dir.md",
+      "supports": "Chromium profile paths on Windows, macOS, and Linux and the private data stored there."
+    },
+    {
+      "title": "Mozilla Support: Profiles - Where Firefox stores your bookmarks, passwords and other user data",
+      "url": "https://support.mozilla.org/en-US/kb/profiles-where-firefox-stores-user-data",
+      "supports": "Firefox profile paths and stored passwords, cookies, history, and other user data."
+    },
+    {
+      "title": "AWS CLI: Configuration and credential files",
+      "url": "https://docs.aws.amazon.com/cli/latest/topic/config-vars.html",
+      "supports": "Default AWS shared credential file location."
+    },
+    {
+      "title": "Kubernetes: kubectl config",
+      "url": "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_config/",
+      "supports": "Default kubeconfig location and its use for cluster and user credentials."
+    },
+    {
+      "title": "Docker: docker login",
+      "url": "https://docs.docker.com/reference/cli/docker/login/",
+      "supports": "Docker configuration paths and persisted registry credentials."
+    },
+    {
+      "title": "Google Cloud CLI: Configurations",
+      "url": "https://docs.cloud.google.com/sdk/docs/configurations",
+      "supports": "Google Cloud CLI configuration directories on Windows, macOS, and Linux."
+    },
+    {
+      "title": "Azure CLI: Microsoft Authentication Library",
+      "url": "https://learn.microsoft.com/en-au/cli/azure/msal-based-azure-cli",
+      "supports": "Azure CLI token cache under the .azure directory."
+    },
+    {
+      "title": "Terraform CLI: logout",
+      "url": "https://developer.hashicorp.com/terraform/cli/commands/logout",
+      "supports": "Terraform credentials.tfrc.json can store API tokens in plaintext."
+    }
+  ]
+}
