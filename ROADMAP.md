@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力、Context 管理、模型切换、Prompt 模块、用户画像本地读取与全量更新、长期记忆创建、全文索引、检索与按 ID 删除 Tool、Tool 权限分级与文件路径条件授权、跨平台危险路径拦截、文件 Tool 跨目录访问及 `exec` 完整 shell 命令执行已完成；记忆创建和检索已通过 Kimi、DeepSeek 真实回归，Profile 更新与记忆删除流程待真实模型回归。
+终端 Agent 基础能力、Context 管理、模型切换、Prompt 模块、用户画像本地读取与全量更新、长期记忆创建、全文索引、检索与按 ID 删除 Tool、Tool 权限分级与文件路径条件授权、跨平台危险路径拦截、文件 Tool 跨目录访问，以及 `exec` 完整 shell 命令执行、显式目录切换拦截、非 Shell 语言入口分流、跨平台危险操作阻止与安全只读命令自动放行已完成；记忆创建和检索已通过 Kimi、DeepSeek 真实回归，Profile 更新与记忆删除流程待真实模型回归。
 
 ## 已完成
 
@@ -93,7 +93,8 @@
 - `isDangerousPath` 保留布尔兼容接口，并新增 `inspectDangerousPath` 详细结果：区分静态禁止、动态用户选择目录、安全路径和无效路径，返回规范化请求路径、真实路径及命中规则 ID；继续支持绝对路径、相对路径、`~`、POSIX 与 Windows 环境变量、Windows 特殊路径及 symlink／junction 真实目标检查。
 - `read_file`、`write_file` 支持绝对路径、`../` 相对路径、环境变量表达式和跨目录符号链接，可访问当前进程有权限操作的任意普通文件；实际打开前使用与授权层一致的路径展开和危险规则复检，并继续独立拒绝 `.env*`、`.git` 和非普通文件。
 - `exec` 输入收敛为完整 `command` 字符串并通过 shell 执行，支持原白名单外命令、管道、重定向和状态修改；移除命令及路径限制，保留 5 秒超时、64 KB 输出上限和非零退出错误。
-- LangGraph human-in-the-loop 改为条件授权：公共权限定义位于 `permission/index.ts`，Read、Write 与项目目录判断分别由 `read.ts`、`write.ts`、`util.ts` 负责；无文件参数和项目内普通路径自动执行，静态高危路径、无效路径及项目外动态个人目录直接阻止，项目外安全读取直接执行，只有项目外安全写入进入确认；`exec`、`network`、`db` 保持逐项确认。
+- LangGraph human-in-the-loop 改为条件授权：公共权限定义位于 `permission/index.ts`，Read、Write 与项目目录判断分别由 `read.ts`、`write.ts`、`util.ts` 负责；无文件参数和项目内普通路径自动执行，静态高危路径、无效路径及项目外动态个人目录直接阻止，项目外安全读取直接执行，只有项目外安全写入进入确认；`network`、`db` 保持逐项确认。
+- 新增独立 `permission/exec.ts` 策略：显式目录切换直接阻止；轻量词法扫描器按 shell 命令位置识别 Python、JavaScript／TypeScript 及其他常见语言入口，并分类阻止超级权限、删除、写入、权限修改、进程与服务控制、用户修改、敏感信息获取及网络／远程控制。规则覆盖 common、macOS、Linux、Windows 命令、上下文子命令、输出重定向、危险路径读取和 Shell 内联命令；`ls`、`pwd`、`cat`、`head`、`tail`、`grep`、`find`、`git status/diff/log`、`echo`、`date`、`whoami` 及 Windows 等价只读命令在整条命令和参数均可静态证明安全时自动执行，缺少 `command`、动态 shell 语法、未知命令及不透明入口继续请求用户确认，完整进程级文件系统隔离仍保留为待办。
 
 ## 进行中
 
@@ -118,6 +119,7 @@
 - Read／Write 路径条件授权回归通过：覆盖无路径自动执行、`Documents` 内项目豁免、静态规则优先阻止、项目边界 symlink、项目外普通路径确认、动态个人目录阻止及同轮 `allow`／`deny`／`ask` 混合映射；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（36 个测试套件、266 条测试）。
 - Tool 权限元数据从 `tools` 迁移至 `permission` 后，Tool 工厂、Graph 与授权分类器形成单向权限依赖；`pnpm typecheck`、权限相关 31 条定向测试、全量 266 条测试、`pnpm build` 与 `git diff --check` 通过。
 - Read／Write 授权策略完成模块拆分，`isInProjectDir` 独立归入路径工具模块；专项测试确认项目外安全读取不再触发确认、项目外安全写入仍请求确认，敏感及无效路径继续阻止。`pnpm typecheck`、39 条权限与 Graph 定向测试、274 条全量测试、`pnpm build` 与 `git diff --check` 通过。
+- Exec 静态命令授权回归通过：覆盖目录切换、三类语言入口、八类危险操作和跨平台安全只读命令集合，包含复合命令全片段校验、动态 shell 语法、Git／`find` 危险参数、递归与符号链接边界、Windows 环境变量及 PowerShell 内联命令；Graph 对安全 Exec 不询问并直接执行，对十二类拒绝原因不询问、不执行，对未知调用继续确认。`pnpm typecheck`、236 条权限与 Graph 定向测试、487 条全量测试及 `pnpm build` 通过。
 - `pnpm typecheck`、`pnpm build` 与 `pnpm start` 通过。
 - 构建产物已完成 Moonshot 集成测试：`hi` 与 `who are you` 均收到正常流式回复。
 - `pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过。

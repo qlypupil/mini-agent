@@ -56,6 +56,7 @@
 | 40 | `26c2082` | 增加 Tool 权限分级并调整执行边界 | [40](./40-tool-permission-level.md) |
 | 41 | `a51ff60` | 增加 Tool 调用 Human-in-the-loop 确认 | [41](./41-tool-human-in-the-loop.md) |
 | 42 | `ae2e00e` | 增加跨平台危险路径基线与匹配器 | [42](./42-dangerous-path-matcher.md) |
+| 43 | `27d87f6` | 增加文件 Tool 路径分级授权 | [43](./43-read-write-path-authorization.md) |
 
 ## 核对方式
 

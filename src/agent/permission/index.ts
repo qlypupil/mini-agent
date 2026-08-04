@@ -23,7 +23,21 @@ export type ToolAuthorizationAction = 'allow' | 'ask' | 'deny'
 
 export interface ToolAuthorization {
 	action: ToolAuthorizationAction
-	reason?: 'invalid_path' | 'protected_path'
+	reason?:
+		| 'directory_change'
+		| 'file_deletion'
+		| 'file_modification'
+		| 'invalid_path'
+		| 'javascript_execution'
+		| 'network_remote_control'
+		| 'other_language_execution'
+		| 'permission_change'
+		| 'privilege_escalation'
+		| 'process_service_control'
+		| 'protected_path'
+		| 'python_execution'
+		| 'sensitive_information_access'
+		| 'user_account_change'
 	inspection?: DangerousPathInspection
 }
 

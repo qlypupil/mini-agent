@@ -33,6 +33,7 @@ import {
 	type ToolAuthorization,
 	type ToolPermissionLevel,
 } from '../permission'
+import { authorizeExec } from '../permission/exec'
 import { authorizeRead } from '../permission/read'
 import { createProjectPathBoundary } from '../permission/util'
 import { authorizeWrite } from '../permission/write'
@@ -94,6 +95,39 @@ function getLatestAIMessage(messages: BaseMessage[]): AIMessage | undefined {
 		}
 	}
 	return undefined
+}
+
+function getDeniedToolMessage(reason: ToolAuthorization['reason']): string {
+	switch (reason) {
+		case 'directory_change':
+			return 'The shell command attempts to change the working directory and was blocked by the local execution policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it with another tool.'
+		case 'python_execution':
+			return 'Python execution through the exec tool is blocked by the local execution policy. The tool was not executed. If Python is appropriate, use the run_py tool instead; do not retry or bypass the restriction through exec.'
+		case 'javascript_execution':
+			return 'JavaScript or TypeScript execution through the exec tool is blocked by the local execution policy. The tool was not executed. If JavaScript or TypeScript is appropriate, use the run_js tool instead; do not retry or bypass the restriction through exec.'
+		case 'other_language_execution':
+			return 'Non-shell language execution through the exec tool is blocked by the local execution policy. The tool was not executed. Explain that exec is limited to shell commands and shell scripts, and do not retry or bypass the restriction.'
+		case 'privilege_escalation':
+			return 'The shell command attempts to use elevated privileges and was blocked by the local execution policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it through exec.'
+		case 'file_deletion':
+			return 'The shell command attempts to delete files or directories and was blocked by the local execution policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it through exec.'
+		case 'file_modification':
+			return 'The shell command attempts to modify files or directories and was blocked by the local execution policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it through exec.'
+		case 'permission_change':
+			return 'The shell command attempts to change file or directory permissions and was blocked by the local execution policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it through exec.'
+		case 'process_service_control':
+			return 'The shell command attempts to control processes or services and was blocked by the local execution policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it through exec.'
+		case 'user_account_change':
+			return 'The shell command attempts to modify user or group accounts and was blocked by the local execution policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it through exec.'
+		case 'sensitive_information_access':
+			return 'The shell command attempts to access sensitive local information and was blocked by the local execution policy. The tool was not executed. Explain the restriction without exposing sensitive path details, and do not retry or bypass it through exec.'
+		case 'network_remote_control':
+			return 'The shell command attempts network access or remote control and was blocked by the local execution policy. The tool was not executed. For public web retrieval, use web_search or web_fetch when appropriate; do not retry or bypass the restriction through exec.'
+		case 'invalid_path':
+			return 'The requested file path could not be safely resolved. The tool was not executed. Explain the restriction to the user and do not retry or bypass it with another tool.'
+		default:
+			return 'The requested file path is protected by the local filesystem safety policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it with another tool.'
+	}
 }
 
 function validateApprovalResume(
@@ -195,7 +229,9 @@ export function createChatGraph({
 						? authorizeRead(registeredTool, toolCall.args, projectBoundary)
 						: registeredTool.permission_level === 'write'
 							? authorizeWrite(registeredTool, toolCall.args, projectBoundary)
-							: { action: 'ask' }
+							: registeredTool.permission_level === 'exec'
+								? authorizeExec(toolCall.args)
+								: { action: 'ask' }
 
 				return {
 					toolCall,
@@ -207,16 +243,12 @@ export function createChatGraph({
 				({ toolCall, authorization }) => {
 					if (authorization.action !== 'deny') return []
 
-					const content = authorization.reason === 'invalid_path'
-						? 'The requested file path could not be safely resolved. The tool was not executed. Explain the restriction to the user and do not retry or bypass it with another tool.'
-						: 'The requested file path is protected by the local filesystem safety policy. The tool was not executed. Explain the restriction to the user and do not retry or bypass it with another tool.'
-
 					return [
 						new ToolMessage({
 							name: toolCall.name,
 							tool_call_id: toolCall.id!,
 							status: 'error',
-							content,
+							content: getDeniedToolMessage(authorization.reason),
 						}),
 					]
 				},

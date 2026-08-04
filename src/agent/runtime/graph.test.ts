@@ -394,6 +394,250 @@ describe('custom chat graph', () => {
 		checkpointer.db.close()
 	})
 
+	it('executes a statically safe exec command without confirmation', async () => {
+		const execute = jest.fn(({ command }: { command: string }) => command)
+		const exec = withPermissionLevel(tool(execute, {
+			name: 'exec',
+			description: 'Execute a shell command.',
+			schema: z.object({ command: z.string() }),
+		}), 'exec')
+		const log = jest.spyOn(console, 'log').mockImplementation()
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'call-safe-exec',
+					name: 'exec',
+					args: { command: 'pwd && git status --short' },
+				},
+			])
+			.respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(model, [exec])
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('inspect the project')] },
+			{
+				configurable: { thread_id: 'safe-exec-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(isInterrupted(result)).toBe(false)
+		expect(execute).toHaveBeenCalledTimes(1)
+		expect(execute.mock.calls[0]?.[0]).toEqual({
+			command: 'pwd && git status --short',
+		})
+		expect(log).toHaveBeenCalledWith('[Tool] exec')
+		expect(result.messages.at(-1)?.content).toBe('done')
+		checkpointer.db.close()
+	})
+
+	it('blocks an exec command that explicitly changes directories', async () => {
+		const execute = jest.fn(() => 'should not run')
+		const exec = withPermissionLevel(tool(execute, {
+			name: 'exec',
+			description: 'Execute a shell command.',
+			schema: z.object({ command: z.string() }),
+		}), 'exec')
+		const log = jest.spyOn(console, 'log').mockImplementation()
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'call-directory-change',
+					name: 'exec',
+					args: { command: 'cd /tmp && pwd' },
+				},
+			])
+			.respond(new AIMessage('blocked'))
+		const { graph, checkpointer } = createTestGraph(model, [exec])
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('change directories')] },
+			{
+				configurable: { thread_id: 'exec-directory-change-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(isInterrupted(result)).toBe(false)
+		expect(execute).not.toHaveBeenCalled()
+		expect(log).not.toHaveBeenCalledWith('[Tool] exec')
+		expect(model.calls[1].messages).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					tool_call_id: 'call-directory-change',
+					status: 'error',
+					content: expect.stringContaining('change the working directory'),
+				}),
+			]),
+		)
+		expect(result.messages.at(-1)?.content).toBe('blocked')
+		checkpointer.db.close()
+	})
+
+	it('blocks language execution through exec with category-specific guidance', async () => {
+		const execute = jest.fn(() => 'should not run')
+		const exec = withPermissionLevel(tool(execute, {
+			name: 'exec',
+			description: 'Execute a shell command.',
+			schema: z.object({ command: z.string() }),
+		}), 'exec')
+		const log = jest.spyOn(console, 'log').mockImplementation()
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'call-python',
+					name: 'exec',
+					args: { command: 'python script.py' },
+				},
+				{
+					id: 'call-javascript',
+					name: 'exec',
+					args: { command: 'node script.js' },
+				},
+				{
+					id: 'call-other-language',
+					name: 'exec',
+					args: { command: 'go run main.go' },
+				},
+			])
+			.respond(new AIMessage('blocked'))
+		const { graph, checkpointer } = createTestGraph(model, [exec])
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('run language scripts')] },
+			{
+				configurable: { thread_id: 'exec-language-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(isInterrupted(result)).toBe(false)
+		expect(execute).not.toHaveBeenCalled()
+		expect(log).not.toHaveBeenCalledWith('[Tool] exec')
+		const toolMessages = model.calls[1].messages.filter(ToolMessage.isInstance)
+		expect(toolMessages).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					tool_call_id: 'call-python',
+					status: 'error',
+					content: expect.stringContaining('run_py'),
+				}),
+				expect.objectContaining({
+					tool_call_id: 'call-javascript',
+					status: 'error',
+					content: expect.stringContaining('run_js'),
+				}),
+				expect.objectContaining({
+					tool_call_id: 'call-other-language',
+					status: 'error',
+					content: expect.stringContaining('shell commands and shell scripts'),
+				}),
+			]),
+		)
+		expect(result.messages.at(-1)?.content).toBe('blocked')
+		checkpointer.db.close()
+	})
+
+	it('blocks dangerous exec operations with category-specific guidance', async () => {
+		const execute = jest.fn(() => 'should not run')
+		const exec = withPermissionLevel(tool(execute, {
+			name: 'exec',
+			description: 'Execute a shell command.',
+			schema: z.object({ command: z.string() }),
+		}), 'exec')
+		const blockedCommands = [
+			{
+				id: 'call-privilege',
+				command: 'sudo ls',
+				message: 'elevated privileges',
+			},
+			{
+				id: 'call-delete',
+				command: 'rm notes.txt',
+				message: 'delete files or directories',
+			},
+			{
+				id: 'call-modify',
+				command: 'cp source.txt target.txt',
+				message: 'modify files or directories',
+			},
+			{
+				id: 'call-permission',
+				command: 'chmod 600 notes.txt',
+				message: 'change file or directory permissions',
+			},
+			{
+				id: 'call-process',
+				command: 'kill 123',
+				message: 'control processes or services',
+			},
+			{
+				id: 'call-user',
+				command: 'passwd pupil',
+				message: 'modify user or group accounts',
+			},
+			{
+				id: 'call-sensitive',
+				command: 'printenv',
+				message: 'access sensitive local information',
+			},
+			{
+				id: 'call-network',
+				command: 'curl https://example.com',
+				message: 'network access or remote control',
+			},
+		]
+		const log = jest.spyOn(console, 'log').mockImplementation()
+		const model = fakeModel()
+			.respondWithTools(blockedCommands.map(({ id, command }) => ({
+				id,
+				name: 'exec',
+				args: { command },
+			})))
+			.respond(new AIMessage('blocked'))
+		const { graph, checkpointer } = createTestGraph(model, [exec])
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('run dangerous commands')] },
+			{
+				configurable: { thread_id: 'exec-dangerous-operation-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(isInterrupted(result)).toBe(false)
+		expect(execute).not.toHaveBeenCalled()
+		expect(log).not.toHaveBeenCalledWith('[Tool] exec')
+		const toolMessages = model.calls[1].messages.filter(ToolMessage.isInstance)
+		for (const blockedCommand of blockedCommands) {
+			expect(toolMessages).toEqual(expect.arrayContaining([
+				expect.objectContaining({
+					tool_call_id: blockedCommand.id,
+					status: 'error',
+					content: expect.stringContaining(blockedCommand.message),
+				}),
+			]))
+		}
+		expect(result.messages.at(-1)?.content).toBe('blocked')
+		checkpointer.db.close()
+	})
+
 	it('executes read or write tools without a file path without confirmation', async () => {
 		const execute = jest.fn(() => 'current value')
 		const readWithoutPath = withPermissionLevel(tool(execute, {

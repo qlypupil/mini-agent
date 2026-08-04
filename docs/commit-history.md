@@ -1077,6 +1077,24 @@ START -> apply_context -> model_request -> END
 
 **验证**：`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build`、构建产物直接加载和 `git diff --check` 通过，共 35 个测试套件、250 条测试；`isDangerousPath` 的 36 条定向测试覆盖 macOS、Windows、Linux 规则、路径表达式和真实 symlink／junction。
 
+## 43. [`27d87f6` `feat: 增加文件 Tool 路径分级授权`](https://github.com/qlypupil/mini-agent/commit/27d87f6b299083c1ab4aee874f2d53306385ce87)
+
+**后续拆分**：[`52d011f` `feat: 拆分读写权限策略`](https://github.com/qlypupil/mini-agent/commit/52d011f23a6079bd119a9c13da30b1dc8e5f371e)
+
+**详细说明**：[43 Read／Write Tool 路径分级授权](./commits/43-read-write-path-authorization.md)
+
+**目标**：将 Tool 权限等级、项目目录边界和跨平台危险路径规则组合为执行前的条件授权，使普通文件操作减少无意义确认，同时阻止危险路径访问。
+
+**主要改动**：
+
+- 为文件 Tool 增加可信的 `file_path_arg` 元数据，授权节点只按服务端注册信息读取路径参数；无文件参数的 Read／Write Tool 自动执行。
+- 扩展 `inspectDangerousPath()`，区分安全、静态禁止、需要用户明确选择和无效路径，并返回规范化请求路径、真实路径及命中规则。
+- 统一权限检查和文件 Tool 的路径展开、真实路径解析与打开前复检，继续保留 `.env*`、`.git` 和普通文件类型限制。
+- 将公共权限类型归入 `permission/index.ts`，Read、Write 和项目目录判断分别拆至 `read.ts`、`write.ts`、`util.ts`；项目外安全读取自动执行，项目外安全写入请求确认。
+- Graph 支持同轮 `allow`、`deny`、`ask` 混合决策，只对 `ask` 集合触发 interrupt；策略阻止生成配对错误 ToolMessage，不执行 Tool。
+
+**验证**：首次实现通过 36 个测试套件、266 条测试；后续拆分通过 39 条权限与 Graph 定向测试及 274 条全量测试。两个阶段的 `pnpm typecheck`、`pnpm build` 与 `git diff --check` 均通过。
+
 ## 当前结构
 
 ```text
@@ -1104,6 +1122,7 @@ src/agent/
     sessions.ts               # SQLite 会话查询与终端表格
   permission/
     dangerous-path.json       # macOS、Windows、Linux 危险读取路径数据
+    exec.ts                   # Exec Tool 目录、语言与危险操作授权策略
     index.ts                   # Tool 权限等级、元数据类型与挂载辅助函数
     is-dangerous-path.ts      # 路径展开、真实路径解析与危险规则分级
     read.ts                    # Read Tool 路径授权策略

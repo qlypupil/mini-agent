@@ -2,7 +2,8 @@
 
 ## Commit 信息
 
-- Commit：待提交
+- Commit：[`27d87f6`](https://github.com/qlypupil/mini-agent/commit/27d87f6b299083c1ab4aee874f2d53306385ce87)
+- 后续拆分：[`52d011f`](https://github.com/qlypupil/mini-agent/commit/52d011f23a6079bd119a9c13da30b1dc8e5f371e)
 - 类型：`feat`
 - 状态：当前实现
 - 基线：`98e95e1 docs: 补齐危险路径判断提交信息`
