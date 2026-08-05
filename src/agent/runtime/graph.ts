@@ -34,6 +34,7 @@ import {
 	type ToolPermissionLevel,
 } from '../permission'
 import { authorizeExec } from '../permission/exec'
+import { authorizeNetwork } from '../permission/network'
 import { authorizeRead } from '../permission/read'
 import { createProjectPathBoundary } from '../permission/util'
 import { authorizeWrite } from '../permission/write'
@@ -231,7 +232,9 @@ export function createChatGraph({
 							? authorizeWrite(registeredTool, toolCall.args, projectBoundary)
 							: registeredTool.permission_level === 'exec'
 								? authorizeExec(toolCall.args)
-								: { action: 'ask' }
+								: registeredTool.permission_level === 'network'
+									? authorizeNetwork(toolCall.args)
+									: { action: 'ask' }
 
 				return {
 					toolCall,

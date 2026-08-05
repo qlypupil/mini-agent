@@ -670,6 +670,93 @@ describe('custom chat graph', () => {
 		checkpointer.db.close()
 	})
 
+	it('executes network tools without a URL or with a safe URL without confirmation', async () => {
+		const search = jest.fn(() => 'search result')
+		const fetch = jest.fn(() => 'fetch result')
+		const webSearch = withPermissionLevel(tool(search, {
+			name: 'web_search',
+			description: 'Search the web.',
+			schema: z.object({ query: z.string() }),
+		}), 'network')
+		const webFetch = withPermissionLevel(tool(fetch, {
+			name: 'web_fetch',
+			description: 'Fetch a URL.',
+			schema: z.object({ url: z.string() }),
+		}), 'network')
+		const model = fakeModel()
+			.respondWithTools([
+				{ id: 'call-search', name: 'web_search', args: { query: 'news' } },
+				{
+					id: 'call-safe-fetch',
+					name: 'web_fetch',
+					args: { url: 'https://docs.github.com/en' },
+				},
+			])
+			.respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(model, [webSearch, webFetch])
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('search and fetch')] },
+			{
+				configurable: { thread_id: 'safe-network-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(isInterrupted(result)).toBe(false)
+		expect(search).toHaveBeenCalledTimes(1)
+		expect(fetch).toHaveBeenCalledTimes(1)
+		expect(result.messages.at(-1)?.content).toBe('done')
+		checkpointer.db.close()
+	})
+
+	it('asks for confirmation before fetching an unlisted domain', async () => {
+		const fetch = jest.fn(() => 'fetch result')
+		const webFetch = withPermissionLevel(tool(fetch, {
+			name: 'web_fetch',
+			description: 'Fetch a URL.',
+			schema: z.object({ url: z.string() }),
+		}), 'network')
+		const model = fakeModel().respondWithTools([
+			{
+				id: 'call-unsafe-fetch',
+				name: 'web_fetch',
+				args: { url: 'https://example.com' },
+			},
+		])
+		const { graph, checkpointer } = createTestGraph(model, [webFetch])
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('fetch it')] },
+			{
+				configurable: { thread_id: 'unlisted-network-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(fetch).not.toHaveBeenCalled()
+		expect(isInterrupted<ToolApprovalInterrupt>(result)).toBe(true)
+		if (isInterrupted<ToolApprovalInterrupt>(result)) {
+			expect(result.__interrupt__[0]?.value?.requests).toEqual([
+				{
+					id: 'call-unsafe-fetch',
+					name: 'web_fetch',
+					args: { url: 'https://example.com' },
+					permissionLevel: 'network',
+				},
+			])
+		}
+		checkpointer.db.close()
+	})
+
 	it('executes ordinary project file calls without confirmation', async () => {
 		const projectRoot = mkdtempSync(join(process.cwd(), '.graph-path-project-'))
 		const filePath = join(projectRoot, 'notes.txt')

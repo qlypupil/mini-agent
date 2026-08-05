@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-终端 Agent 基础能力、Context 管理、模型切换、Prompt 模块、用户画像本地读取与全量更新、长期记忆创建、全文索引、检索与按 ID 删除 Tool、Tool 权限分级与文件路径条件授权、跨平台危险路径拦截、文件 Tool 跨目录访问，以及 `exec` 完整 shell 命令执行、显式目录切换拦截、非 Shell 语言入口分流、跨平台危险操作阻止与安全只读命令自动放行已完成；记忆创建和检索已通过 Kimi、DeepSeek 真实回归，Profile 更新与记忆删除流程待真实模型回归。
+终端 Agent 基础能力、Context 管理、模型切换、Prompt 模块、用户画像本地读取与全量更新、长期记忆创建、全文索引、检索与按 ID 删除 Tool、Tool 权限分级与文件路径条件授权、跨平台危险路径拦截、文件 Tool 跨目录访问、Network Tool 域名条件授权与跨域重定向保护，以及 `exec` 完整 shell 命令执行、显式目录切换拦截、非 Shell 语言入口分流、跨平台危险操作阻止与安全只读命令自动放行已完成；记忆创建和检索已通过 Kimi、DeepSeek 真实回归，Profile 更新与记忆删除流程待真实模型回归。
 
 ## 已完成
 
@@ -95,6 +95,8 @@
 - `exec` 输入收敛为完整 `command` 字符串并通过 shell 执行，支持原白名单外命令、管道、重定向和状态修改；移除命令及路径限制，保留 5 秒超时、64 KB 输出上限和非零退出错误。
 - LangGraph human-in-the-loop 改为条件授权：公共权限定义位于 `permission/index.ts`，Read、Write 与项目目录判断分别由 `read.ts`、`write.ts`、`util.ts` 负责；无文件参数和项目内普通路径自动执行，静态高危路径、无效路径及项目外动态个人目录直接阻止，项目外安全读取直接执行，只有项目外安全写入进入确认；`network`、`db` 保持逐项确认。
 - 新增独立 `permission/exec.ts` 策略：显式目录切换直接阻止；轻量词法扫描器按 shell 命令位置识别 Python、JavaScript／TypeScript 及其他常见语言入口，并分类阻止超级权限、删除、写入、权限修改、进程与服务控制、用户修改、敏感信息获取及网络／远程控制。规则覆盖 common、macOS、Linux、Windows 命令、上下文子命令、输出重定向、危险路径读取和 Shell 内联命令；`ls`、`pwd`、`cat`、`head`、`tail`、`grep`、`find`、`git status/diff/log`、`echo`、`date`、`whoami` 及 Windows 等价只读命令在整条命令和参数均可静态证明安全时自动执行，缺少 `command`、动态 shell 语法、未知命令及不透明入口继续请求用户确认，完整进程级文件系统隔离仍保留为待办。
+- 新增 `permission/is-safe-domains.ts`，整理面向中国开发者工作场景的 100 个去重主域名，覆盖代码托管、技术社区、开发文档、云服务、协作办公与 AI 平台；该集合用于 Network Tool 自动授权候选，但不表示目标内容可信。
+- 新增 `permission/network.ts` 条件授权：没有字符串 `url` 参数的 Network Tool 直接执行，HTTP(S) URL 的主域名或子域名命中候选集合时直接执行，未命中、伪装、无效或非 HTTP(S) URL 请求用户确认；`web_fetch` 只自动跟随同域或候选域名重定向，其他跨域目标必须通过新的 Tool 调用重新授权。
 
 ## 进行中
 
@@ -114,6 +116,7 @@
 
 ## 最近验证
 
+- Network Tool 域名条件授权回归通过：覆盖 100 个候选主域名的数量、唯一性和格式，主域名与子域名匹配、伪装域名、无效 URL、无 URL 自动执行、候选域名自动执行、未命中域名触发 HITL，以及同域、候选域名和未授权跨域重定向边界；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（41 个测试套件、508 条测试）。
 - `dangerous-path.json` 已通过 JSON 解析、38 个规则 ID 唯一性、277 个路径模式非空及 `git diff --check` 验证。
 - `isDangerousPath` 已通过 macOS、Windows、Linux 36 条定向回归，包括真实 symlink／junction 目标复检和解析异常默认拒绝；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与构建产物直接加载验证通过（35 个测试套件、250 条测试），发布目录包含危险路径 JSON。
 - Read／Write 路径条件授权回归通过：覆盖无路径自动执行、`Documents` 内项目豁免、静态规则优先阻止、项目边界 symlink、项目外普通路径确认、动态个人目录阻止及同轮 `allow`／`deny`／`ask` 混合映射；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（36 个测试套件、266 条测试）。

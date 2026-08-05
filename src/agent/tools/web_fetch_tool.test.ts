@@ -20,6 +20,15 @@ function textResponse(content: string, contentType = 'text/html'): Response {
 	} as unknown as Response
 }
 
+function redirectResponse(location: string): Response {
+	return {
+		body: null,
+		headers: new Headers({ location }),
+		ok: false,
+		status: 302,
+	} as unknown as Response
+}
+
 describe('webFetchTool', () => {
 	beforeEach(() => {
 		// lookup() 的 all: true 重载返回数组，Jest 无法从重载函数类型中推断该分支。
@@ -56,6 +65,46 @@ describe('webFetchTool', () => {
 		await expect(webFetchTool('https://example.com', request)).rejects.toThrow(
 			'Network unavailable',
 		)
+	})
+
+	it('follows same-domain redirects', async () => {
+		const request = jest
+			.fn()
+			.mockResolvedValueOnce(redirectResponse('/new-location'))
+			.mockResolvedValueOnce(textResponse('redirected'))
+
+		await expect(
+			webFetchTool('https://example.com/old-location', request),
+		).resolves.toContain('redirected')
+		expect(request).toHaveBeenCalledTimes(2)
+	})
+
+	it('follows cross-domain redirects to another listed domain', async () => {
+		const request = jest
+			.fn()
+			.mockResolvedValueOnce(
+				redirectResponse('https://raw.githubusercontent.com/openai/codex/main/README.md'),
+			)
+			.mockResolvedValueOnce(textResponse('readme'))
+
+		await expect(
+			webFetchTool('https://github.com/openai/codex', request),
+		).resolves.toContain('readme')
+		expect(request).toHaveBeenCalledTimes(2)
+	})
+
+	it('requires a new tool call before redirecting to an unlisted domain', async () => {
+		const request = jest
+			.fn()
+			.mockResolvedValueOnce(redirectResponse('https://example.com/landing'))
+
+		await expect(
+			webFetchTool('https://github.com/openai/codex', request),
+		).rejects.toThrow(
+			'Redirect target requires a separate web_fetch tool call and user confirmation: https://example.com/landing',
+		)
+		expect(request).toHaveBeenCalledTimes(1)
+		expect(mockLookup).not.toHaveBeenCalledWith('example.com', expect.anything())
 	})
 
 	it('rejects responses larger than 1 MB', async () => {

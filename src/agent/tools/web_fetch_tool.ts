@@ -1,5 +1,6 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { isSafeDomain } from '../permission/is-safe-domains'
 
 const REQUEST_TIMEOUT_MS = 10_000
 const MAX_RESPONSE_BYTES = 1_024 * 1_024
@@ -57,6 +58,22 @@ function isTextResponse(contentType: string | null): boolean {
 			contentType?.includes('application/json') ||
 			contentType?.includes('application/xml') ||
 			contentType?.includes('application/javascript'),
+	)
+}
+
+function normalizeHostname(hostname: string): string {
+	return hostname.toLowerCase().replace(/\.$/, '')
+}
+
+function assertPermittedRedirect(source: URL, target: URL): void {
+	const sourceHostname = normalizeHostname(source.hostname)
+	const targetHostname = normalizeHostname(target.hostname)
+	if (sourceHostname === targetHostname || isSafeDomain(target.toString())) {
+		return
+	}
+
+	throw new Error(
+		`Redirect target requires a separate web_fetch tool call and user confirmation: ${target}`,
 	)
 }
 
@@ -140,7 +157,9 @@ export async function webFetchTool(
 				if (redirectCount === MAX_REDIRECTS) {
 					throw new Error('Too many redirects.')
 				}
-				target = await assertPublicUrl(new URL(location, target).toString())
+				const redirectTarget = new URL(location, target)
+				assertPermittedRedirect(target, redirectTarget)
+				target = await assertPublicUrl(redirectTarget.toString())
 				continue
 			}
 
