@@ -757,6 +757,44 @@ describe('custom chat graph', () => {
 		checkpointer.db.close()
 	})
 
+	it('executes tools without a specialized permission check without confirmation', async () => {
+		const execute = jest.fn(() => 'database result')
+		const log = jest.spyOn(console, 'log').mockImplementation()
+		const databaseTool = withPermissionLevel(tool(execute, {
+			name: 'database_tool',
+			description: 'Access the database.',
+			schema: z.object({ value: z.string() }),
+		}), 'db')
+		const model = fakeModel()
+			.respondWithTools([
+				{
+					id: 'call-database',
+					name: 'database_tool',
+					args: { value: 'stored value' },
+				},
+			])
+			.respond(new AIMessage('done'))
+		const { graph, checkpointer } = createTestGraph(model, [databaseTool])
+
+		const result = await graph.invoke(
+			{ messages: [new HumanMessage('use the database')] },
+			{
+				configurable: { thread_id: 'default-allow-thread' },
+				context: {
+					model: undefined,
+					contextControl: undefined,
+					contextCompression: undefined,
+				},
+			},
+		)
+
+		expect(isInterrupted(result)).toBe(false)
+		expect(execute).toHaveBeenCalledTimes(1)
+		expect(log).toHaveBeenCalledWith('[Tool] database_tool')
+		expect(result.messages.at(-1)?.content).toBe('done')
+		checkpointer.db.close()
+	})
+
 	it('executes ordinary project file calls without confirmation', async () => {
 		const projectRoot = mkdtempSync(join(process.cwd(), '.graph-path-project-'))
 		const filePath = join(projectRoot, 'notes.txt')

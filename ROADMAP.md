@@ -93,7 +93,7 @@
 - `isDangerousPath` 保留布尔兼容接口，并新增 `inspectDangerousPath` 详细结果：区分静态禁止、动态用户选择目录、安全路径和无效路径，返回规范化请求路径、真实路径及命中规则 ID；继续支持绝对路径、相对路径、`~`、POSIX 与 Windows 环境变量、Windows 特殊路径及 symlink／junction 真实目标检查。
 - `read_file`、`write_file` 支持绝对路径、`../` 相对路径、环境变量表达式和跨目录符号链接，可访问当前进程有权限操作的任意普通文件；实际打开前使用与授权层一致的路径展开和危险规则复检，并继续独立拒绝 `.env*`、`.git` 和非普通文件。
 - `exec` 输入收敛为完整 `command` 字符串并通过 shell 执行，支持原白名单外命令、管道、重定向和状态修改；移除命令及路径限制，保留 5 秒超时、64 KB 输出上限和非零退出错误。
-- LangGraph human-in-the-loop 改为条件授权：公共权限定义位于 `permission/index.ts`，Read、Write 与项目目录判断分别由 `read.ts`、`write.ts`、`util.ts` 负责；无文件参数和项目内普通路径自动执行，静态高危路径、无效路径及项目外动态个人目录直接阻止，项目外安全读取直接执行，只有项目外安全写入进入确认；`network`、`db` 保持逐项确认。
+- LangGraph human-in-the-loop 改为条件授权：公共权限定义位于 `permission/index.ts`，Read、Write 与项目目录判断分别由 `read.ts`、`write.ts`、`util.ts` 负责；无文件参数和项目内普通路径自动执行，静态高危路径、无效路径及项目外动态个人目录直接阻止，项目外安全读取直接执行，只有项目外安全写入进入确认；Network Tool 按 URL 域名条件授权，未配置专用权限检查的等级（当前为 `db`）默认直接执行。
 - 新增独立 `permission/exec.ts` 策略：显式目录切换直接阻止；轻量词法扫描器按 shell 命令位置识别 Python、JavaScript／TypeScript 及其他常见语言入口，并分类阻止超级权限、删除、写入、权限修改、进程与服务控制、用户修改、敏感信息获取及网络／远程控制。规则覆盖 common、macOS、Linux、Windows 命令、上下文子命令、输出重定向、危险路径读取和 Shell 内联命令；`ls`、`pwd`、`cat`、`head`、`tail`、`grep`、`find`、`git status/diff/log`、`echo`、`date`、`whoami` 及 Windows 等价只读命令在整条命令和参数均可静态证明安全时自动执行，缺少 `command`、动态 shell 语法、未知命令及不透明入口继续请求用户确认，完整进程级文件系统隔离仍保留为待办。
 - 新增 `permission/is-safe-domains.ts`，整理面向中国开发者工作场景的 100 个去重主域名，覆盖代码托管、技术社区、开发文档、云服务、协作办公与 AI 平台；该集合用于 Network Tool 自动授权候选，但不表示目标内容可信。
 - 新增 `permission/network.ts` 条件授权：没有字符串 `url` 参数的 Network Tool 直接执行，HTTP(S) URL 的主域名或子域名命中候选集合时直接执行，未命中、伪装、无效或非 HTTP(S) URL 请求用户确认；`web_fetch` 只自动跟随同域或候选域名重定向，其他跨域目标必须通过新的 Tool 调用重新授权。
@@ -116,6 +116,7 @@
 
 ## 最近验证
 
+- Tool 默认授权回归通过：具备 `db` 权限但没有专用 permission check 的 Tool 不产生 LangGraph interrupt 并直接执行，Read／Write／Exec／Network 仍进入各自策略；`pnpm typecheck`、`pnpm test --runInBand` 与 `pnpm build` 通过（41 个测试套件、509 条测试）。
 - Network Tool 域名条件授权回归通过：覆盖 100 个候选主域名的数量、唯一性和格式，主域名与子域名匹配、伪装域名、无效 URL、无 URL 自动执行、候选域名自动执行、未命中域名触发 HITL，以及同域、候选域名和未授权跨域重定向边界；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与 `git diff --check` 通过（41 个测试套件、508 条测试）。
 - `dangerous-path.json` 已通过 JSON 解析、38 个规则 ID 唯一性、277 个路径模式非空及 `git diff --check` 验证。
 - `isDangerousPath` 已通过 macOS、Windows、Linux 36 条定向回归，包括真实 symlink／junction 目标复检和解析异常默认拒绝；`pnpm typecheck`、`pnpm test --runInBand`、`pnpm build` 与构建产物直接加载验证通过（35 个测试套件、250 条测试），发布目录包含危险路径 JSON。

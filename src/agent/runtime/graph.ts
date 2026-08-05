@@ -234,7 +234,7 @@ export function createChatGraph({
 								? authorizeExec(toolCall.args)
 								: registeredTool.permission_level === 'network'
 									? authorizeNetwork(toolCall.args)
-									: { action: 'ask' }
+									: { action: 'allow' }
 
 				return {
 					toolCall,
